@@ -75,7 +75,7 @@ public class BlockService {
         if (block == null) {
             throw new BusinessException(40001, "block not found");
         }
-        block.set("graphData", request.graphData());
+        block.set("graphData", objectMapper.valueToTree(request.graphData()));
         contentEntity.setBlocksJson(serializeBlocks(blocks));
         pageContentRepository.save(contentEntity);
     }
@@ -155,14 +155,10 @@ public class BlockService {
     }
 
     private List<JsonNode> deserializeBlocks(String blocksJson) {
-        try {
-            ArrayNode arrayNode = deserializeBlocksAsArrayNode(blocksJson);
-            List<JsonNode> result = new ArrayList<>();
-            arrayNode.forEach(result::add);
-            return result;
-        } catch (JsonProcessingException ex) {
-            throw new BusinessException(50000, "failed to deserialize page content");
-        }
+        ArrayNode arrayNode = deserializeBlocksAsArrayNode(blocksJson);
+        List<JsonNode> result = new ArrayList<>();
+        arrayNode.forEach(result::add);
+        return result;
     }
 
     private ArrayNode deserializeBlocksAsArrayNode(String blocksJson) {

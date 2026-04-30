@@ -1,35 +1,113 @@
 # tu-backend
 
-面向 `tu-web-ts` 的后端工程骨架。
+Java + Spring Boot backend for `tu-web-ts`.
 
-当前阶段先完成三件事：
+## Stack
 
-1. 定义后端技术栈和容器运行方式
-2. 输出与现有前端行为对齐的接口文档
-3. 为后续“逐个接口实现”预留 Spring Boot 4 项目结构
+- Java 25
+- Spring Boot 4
+- Maven
+- MySQL 8.4
+- Docker Compose
 
-## 技术选型
+## Run with Docker
 
-- Java: Eclipse Temurin 25
-- Framework: Spring Boot 4
-- Build: Maven
-- Database: MySQL 8.4
-- Runtime: Docker Compose
+```bash
+docker compose up -d --build
+```
 
-## 目录
+Backend:
 
-- `docs/api-spec.md`: 首版接口文档
-- `docker-compose.yml`: 本地开发编排
-- `Dockerfile`: 应用镜像构建
-- `src/main/...`: Spring Boot 启动骨架
+- `http://localhost:18080`
 
-## 启动说明
+MySQL:
 
-当前仓库先落骨架和文档，接口代码将在后续逐步补充。
+- `localhost:3306`
 
-开发阶段建议顺序：
+## Local development
 
-1. 先实现知识库接口
-2. 再实现页面树与页面内容接口
-3. 再实现块引用与块同步接口
+Build the service:
 
+```bash
+mvn -q -DskipTests package
+```
+
+## Auth API
+
+Spring Security is enabled for password hashing and login verification, but every endpoint is still allowed by default. There is no user state restriction, session requirement, or token gate on existing features.
+
+Register:
+
+```bash
+curl -X POST http://localhost:18080/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d "{\"username\":\"demo\",\"email\":\"demo@example.com\",\"password\":\"demo123456\",\"displayName\":\"Demo\"}"
+```
+
+Login:
+
+```bash
+curl -X POST http://localhost:18080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d "{\"account\":\"demo\",\"password\":\"demo123456\"}"
+```
+
+Main application source remains under:
+
+- `src/main/java`
+- `src/main/resources`
+
+
+# 运行笔记
+docker compose down
+
+如果只想停服务但保留容器：
+
+docker compose stop
+之后再启动可用：
+
+docker compose start
+暂时停下开发
+建议用：
+
+docker compose stop
+下次继续时用：
+
+docker compose start
+这适合：
+
+你没有改 Dockerfile
+你没有改 docker-compose.yml
+你只是暂停一下，之后还想继续用原来的容器
+新机器第一次启动
+不能直接用 start。
+
+因为 docker compose start 的前提是：
+
+这些容器之前已经被 up 创建过
+新机器上第一次没有现成容器，所以必须先：
+
+docker compose up -d --build
+或者如果镜像已经有了，也至少要：
+
+docker compose up -d
+start 只能启动“已经存在但当前停止的容器”，不能负责：
+
+创建容器
+创建网络
+构建镜像
+首次拉镜像
+你可以这样记：
+
+第一次启动：docker compose up -d --build
+暂停：docker compose stop
+恢复：docker compose start
+完全收掉：docker compose down
+什么时候还要再用 up -d --build
+如果你改了这些内容之一，就不要只用 start：
+
+Dockerfile
+docker-compose.yml
+后端 Java 代码
+pom.xml
+只有 docker compose down -v 才会把这个卷一起删掉
