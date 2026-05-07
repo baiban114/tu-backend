@@ -3,6 +3,7 @@ package com.tu.backend.content.entity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.Lob;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
@@ -17,7 +18,8 @@ public class PageContentEntity {
     @Column(name = "page_id", length = 64, nullable = false)
     private String pageId;
 
-    @Column(name = "blocks_json", columnDefinition = "LONGTEXT", nullable = false)
+    @Lob
+    @Column(name = "blocks_json", nullable = false, columnDefinition = "longtext")
     private String blocksJson;
 
     @Column(name = "created_at", nullable = false)
@@ -62,4 +64,3 @@ public class PageContentEntity {
         return updatedAt;
     }
 }
-
