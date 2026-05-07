@@ -1,11 +1,11 @@
 spring:
   application:
     name: tu-backend
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:mysql}
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/tu_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
     username: ${SPRING_DATASOURCE_USERNAME:tu}
     password: ${SPRING_DATASOURCE_PASSWORD:tu123456}
-    driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
     hibernate:
       ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
@@ -22,4 +22,3 @@ server:
 logging:
   level:
     org.hibernate.SQL: info
-
