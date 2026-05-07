@@ -403,7 +403,140 @@
 | created_at | datetime | 创建时间 |
 | updated_at | datetime | 更新时间 |
 
-## 6. 推荐实施顺序
+## 6. External Resource Management
+
+The external resource module is self-developed metadata management. No standalone open-source resource manager is introduced.
+
+### 6.1 Data Models
+
+`ResourceType`
+
+```json
+{
+  "id": "rt-1",
+  "code": "book",
+  "name": "Book",
+  "icon": "📚",
+  "description": "External books",
+  "identityFieldKey": "isbn",
+  "identityFieldLabel": "ISBN"
+}
+```
+
+`ResourceWork`
+
+```json
+{
+  "id": "rw-1",
+  "typeId": "rt-1",
+  "typeName": "Book",
+  "title": "Example Work",
+  "subtitle": "Optional subtitle",
+  "description": "Abstract grouping for editions or releases"
+}
+```
+
+`ResourceItem`
+
+```json
+{
+  "id": "ri-1",
+  "typeId": "rt-1",
+  "typeName": "Book",
+  "identityFieldKey": "isbn",
+  "identityFieldLabel": "ISBN",
+  "workId": "rw-1",
+  "workTitle": "Example Work",
+  "title": "Example Work, First Edition",
+  "identityValue": "9780000000000",
+  "sourceUrl": "https://example.com/book",
+  "edition": "First Edition",
+  "note": "Manually entered metadata"
+}
+```
+
+### 6.2 Resource Type APIs
+
+- `GET /api/resource-types`
+- `POST /api/resource-types`
+- `PATCH /api/resource-types/{id}`
+- `DELETE /api/resource-types/{id}`
+
+Create request:
+
+```json
+{
+  "code": "book",
+  "name": "Book",
+  "icon": "📚",
+  "description": "External books",
+  "identityFieldKey": "isbn",
+  "identityFieldLabel": "ISBN"
+}
+```
+
+Rules:
+
+- `code` is immutable after creation.
+- `identityFieldKey` and `identityFieldLabel` are required.
+- Delete returns `40009` when the type is used by works or items.
+
+### 6.3 Resource Work APIs
+
+- `GET /api/resource-works`
+- `GET /api/resource-works?typeId=rt-1`
+- `POST /api/resource-works`
+- `PATCH /api/resource-works/{id}`
+- `DELETE /api/resource-works/{id}`
+
+Create request:
+
+```json
+{
+  "typeId": "rt-1",
+  "title": "Example Work",
+  "subtitle": "Optional subtitle",
+  "description": "Same resource across editions, releases, or sources"
+}
+```
+
+Rules:
+
+- Work must belong to an existing type.
+- Work type cannot be changed while it has items.
+- Delete returns `40009` when the work is used by items.
+
+### 6.4 Resource Item APIs
+
+- `GET /api/resource-items`
+- `GET /api/resource-items?typeId=rt-1`
+- `GET /api/resource-items?workId=rw-1`
+- `GET /api/resource-items?typeId=rt-1&identityValue=9780000000000`
+- `POST /api/resource-items`
+- `PATCH /api/resource-items/{id}`
+- `DELETE /api/resource-items/{id}`
+
+Create request:
+
+```json
+{
+  "typeId": "rt-1",
+  "workId": "rw-1",
+  "title": "Example Work, First Edition",
+  "identityValue": "9780000000000",
+  "sourceUrl": "https://example.com/book",
+  "edition": "First Edition",
+  "note": "Manually entered metadata"
+}
+```
+
+Rules:
+
+- Work must belong to the selected type.
+- `identityValue` is unique within the same `typeId`.
+- The first version stores metadata only and does not download or host external files.
+
+## 7. 推荐实施顺序
 
 ### 第一批
 
@@ -431,7 +564,7 @@
 - `PATCH /api/blocks/{id}/graph`
 - `POST /api/blocks/sync`
 
-## 7. 当前结论
+## 8. 当前结论
 
 后续接口实现应严格以当前前端行为为准，优先保证：
 

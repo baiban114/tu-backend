@@ -1,0 +1,24 @@
+package com.tu.backend.externalresource.repository;
+
+import com.tu.backend.externalresource.entity.ResourceItemEntity;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.List;
+import java.util.Optional;
+
+public interface ResourceItemRepository extends JpaRepository<ResourceItemEntity, String> {
+
+    List<ResourceItemEntity> findAllByOrderByUpdatedAtDescCreatedAtDesc();
+
+    List<ResourceItemEntity> findByTypeIdOrderByUpdatedAtDescCreatedAtDesc(String typeId);
+
+    List<ResourceItemEntity> findByWorkIdOrderByUpdatedAtDescCreatedAtDesc(String workId);
+
+    List<ResourceItemEntity> findByTypeIdAndWorkIdOrderByUpdatedAtDescCreatedAtDesc(String typeId, String workId);
+
+    Optional<ResourceItemEntity> findByTypeIdAndIdentityValue(String typeId, String identityValue);
+
+    boolean existsByTypeId(String typeId);
+
+    boolean existsByWorkId(String workId);
+}

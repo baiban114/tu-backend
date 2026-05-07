@@ -1,0 +1,54 @@
+package com.tu.backend.externalresource.controller;
+
+import com.tu.backend.common.ApiResponse;
+import com.tu.backend.externalresource.dto.CreateResourceWorkRequest;
+import com.tu.backend.externalresource.dto.ResourceWorkDto;
+import com.tu.backend.externalresource.dto.UpdateResourceWorkRequest;
+import com.tu.backend.externalresource.service.ExternalResourceService;
+import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/resource-works")
+public class ResourceWorkController {
+
+    private final ExternalResourceService externalResourceService;
+
+    public ResourceWorkController(ExternalResourceService externalResourceService) {
+        this.externalResourceService = externalResourceService;
+    }
+
+    @GetMapping
+    public ApiResponse<List<ResourceWorkDto>> list(@RequestParam(required = false) String typeId) {
+        return ApiResponse.success(externalResourceService.listWorks(typeId));
+    }
+
+    @PostMapping
+    public ApiResponse<ResourceWorkDto> create(@Valid @RequestBody CreateResourceWorkRequest request) {
+        return ApiResponse.success(externalResourceService.createWork(request));
+    }
+
+    @PatchMapping("/{id}")
+    public ApiResponse<ResourceWorkDto> update(
+        @PathVariable String id,
+        @Valid @RequestBody UpdateResourceWorkRequest request
+    ) {
+        return ApiResponse.success(externalResourceService.updateWork(id, request));
+    }
+
+    @DeleteMapping("/{id}")
+    public ApiResponse<Void> delete(@PathVariable String id) {
+        externalResourceService.deleteWork(id);
+        return ApiResponse.success();
+    }
+}
