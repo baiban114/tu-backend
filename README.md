@@ -12,8 +12,16 @@ Java + Spring Boot backend for `tu-web-ts`.
 
 ## Run with Docker
 
+MySQL mode:
+
 ```bash
 docker compose up -d --build
+```
+
+PostgreSQL mode:
+
+```bash
+docker compose -f docker-compose.postgresql.yml up -d --build
 ```
 
 Backend:
@@ -23,6 +31,36 @@ Backend:
 MySQL:
 
 - `localhost:3306`
+
+PostgreSQL:
+
+- `localhost:5432`
+
+## Data source switching
+
+Default profile is `mysql`. Switch by setting `SPRING_PROFILES_ACTIVE`.
+
+PowerShell local MySQL:
+
+```powershell
+$env:SPRING_PROFILES_ACTIVE='mysql'
+$env:SPRING_DATASOURCE_URL='jdbc:mysql://localhost:3306/tu_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai'
+$env:SPRING_DATASOURCE_USERNAME='tu'
+$env:SPRING_DATASOURCE_PASSWORD='tu123456'
+mvn spring-boot:run
+```
+
+PowerShell local PostgreSQL:
+
+```powershell
+$env:SPRING_PROFILES_ACTIVE='postgresql'
+$env:SPRING_DATASOURCE_URL='jdbc:postgresql://localhost:5432/tu_db'
+$env:SPRING_DATASOURCE_USERNAME='tu'
+$env:SPRING_DATASOURCE_PASSWORD='tu123456'
+mvn spring-boot:run
+```
+
+No data synchronization is performed between MySQL and PostgreSQL.
 
 ## Local development
 
@@ -56,6 +94,28 @@ Main application source remains under:
 
 - `src/main/java`
 - `src/main/resources`
+
+## External Resource Management
+
+The project includes a lightweight self-developed external resource metadata system. It does not introduce Zotero, ResourceSpace, or another standalone open-source resource manager.
+
+The module manages:
+
+- Resource types: configurable categories such as books, images, and videos, each with a primary identity field such as ISBN or source URL.
+- Resource works: abstract groupings for the same resource across editions, releases, or sources.
+- Resource items: concrete external resource entities with a type-scoped unique identity value.
+
+Main endpoints:
+
+- `GET/POST/PATCH/DELETE /api/resource-types`
+- `GET/POST/PATCH/DELETE /api/resource-works`
+- `GET/POST/PATCH/DELETE /api/resource-items`
+
+First-version behavior:
+
+- Only metadata is stored. The service does not download, cache, or host external files.
+- `ResourceItem.identityValue` is unique within the same resource type.
+- Resource types and works cannot be deleted while referenced by works or items.
 
 
 # 运行笔记
