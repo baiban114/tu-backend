@@ -2,6 +2,7 @@ package com.tu.backend.block.controller;
 
 import com.tu.backend.block.dto.BlockMetaDto;
 import com.tu.backend.block.dto.SyncBlocksRequest;
+import com.tu.backend.block.dto.UpdateBlockRequest;
 import com.tu.backend.block.dto.UpdateBlockContentRequest;
 import com.tu.backend.block.dto.UpdateBlockGraphRequest;
 import com.tu.backend.block.service.BlockService;
@@ -50,10 +51,18 @@ public class BlockController {
         return ApiResponse.success();
     }
 
+    @PatchMapping("/{id}")
+    public ApiResponse<Void> updateBlock(
+        @PathVariable("id") String blockId,
+        @Valid @RequestBody UpdateBlockRequest request
+    ) {
+        blockService.updateBlock(blockId, request);
+        return ApiResponse.success();
+    }
+
     @PostMapping("/sync")
     public ApiResponse<Void> syncBlocks(@Valid @RequestBody SyncBlocksRequest request) {
         blockService.syncBlocks(request);
         return ApiResponse.success();
     }
 }
-

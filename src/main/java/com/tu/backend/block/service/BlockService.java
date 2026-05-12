@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.tu.backend.block.dto.BlockMetaDto;
 import com.tu.backend.block.dto.SyncBlocksRequest;
+import com.tu.backend.block.dto.UpdateBlockRequest;
 import com.tu.backend.block.dto.UpdateBlockContentRequest;
 import com.tu.backend.block.dto.UpdateBlockGraphRequest;
 import com.tu.backend.common.BusinessException;
@@ -76,6 +77,19 @@ public class BlockService {
             throw new BusinessException(40001, "block not found");
         }
         block.set("graphData", objectMapper.valueToTree(request.graphData()));
+        contentEntity.setBlocksJson(serializeBlocks(blocks));
+        pageContentRepository.save(contentEntity);
+    }
+
+    @Transactional
+    public void updateBlock(String blockId, UpdateBlockRequest request) {
+        PageContentEntity contentEntity = getPageContentOrThrow(request.pageId());
+        ArrayNode blocks = deserializeBlocksAsArrayNode(contentEntity.getBlocksJson());
+        ObjectNode replacement = objectMapper.valueToTree(request.block());
+        replacement.put("id", blockId);
+        if (!replaceBlock(blocks, blockId, replacement)) {
+            throw new BusinessException(40001, "block not found");
+        }
         contentEntity.setBlocksJson(serializeBlocks(blocks));
         pageContentRepository.save(contentEntity);
     }
@@ -152,6 +166,25 @@ public class BlockService {
         }
 
         return null;
+    }
+
+    private boolean replaceBlock(ArrayNode blocks, String blockId, ObjectNode replacement) {
+        for (int i = 0; i < blocks.size(); i += 1) {
+            JsonNode block = blocks.get(i);
+            if (block instanceof ObjectNode objectNode) {
+                JsonNode idNode = objectNode.get("id");
+                if (idNode != null && blockId.equals(idNode.asText())) {
+                    blocks.set(i, replacement);
+                    return true;
+                }
+
+                JsonNode childrenNode = objectNode.get("children");
+                if (childrenNode instanceof ArrayNode children && replaceBlock(children, blockId, replacement)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private List<JsonNode> deserializeBlocks(String blocksJson) {
