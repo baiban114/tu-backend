@@ -22,3 +22,7 @@ server:
 logging:
   level:
     org.hibernate.SQL: info
+
+rag:
+  enabled: ${RAG_ENABLED:true}
+  service-url: ${RAG_SERVICE_URL:http://localhost:19080}

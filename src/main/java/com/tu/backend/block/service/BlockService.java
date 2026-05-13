@@ -15,6 +15,7 @@ import com.tu.backend.content.entity.PageContentEntity;
 import com.tu.backend.content.repository.PageContentRepository;
 import com.tu.backend.page.entity.PageEntity;
 import com.tu.backend.page.repository.PageRepository;
+import com.tu.backend.rag.RagIndexService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,15 +28,18 @@ public class BlockService {
     private final PageContentRepository pageContentRepository;
     private final PageRepository pageRepository;
     private final ObjectMapper objectMapper;
+    private final RagIndexService ragIndexService;
 
     public BlockService(
         PageContentRepository pageContentRepository,
         PageRepository pageRepository,
-        ObjectMapper objectMapper
+        ObjectMapper objectMapper,
+        RagIndexService ragIndexService
     ) {
         this.pageContentRepository = pageContentRepository;
         this.pageRepository = pageRepository;
         this.objectMapper = objectMapper;
+        this.ragIndexService = ragIndexService;
     }
 
     @Transactional(readOnly = true)
@@ -66,6 +70,7 @@ public class BlockService {
         block.put("content", request.content() == null ? "" : request.content());
         contentEntity.setBlocksJson(serializeBlocks(blocks));
         pageContentRepository.save(contentEntity);
+        ragIndexService.indexPageBestEffort(request.pageId());
     }
 
     @Transactional
@@ -79,6 +84,7 @@ public class BlockService {
         block.set("graphData", objectMapper.valueToTree(request.graphData()));
         contentEntity.setBlocksJson(serializeBlocks(blocks));
         pageContentRepository.save(contentEntity);
+        ragIndexService.indexPageBestEffort(request.pageId());
     }
 
     @Transactional
@@ -92,6 +98,7 @@ public class BlockService {
         }
         contentEntity.setBlocksJson(serializeBlocks(blocks));
         pageContentRepository.save(contentEntity);
+        ragIndexService.indexPageBestEffort(request.pageId());
     }
 
     @Transactional
@@ -104,9 +111,10 @@ public class BlockService {
                 PageContentEntity created = new PageContentEntity();
                 created.setPageId(page.getId());
                 return created;
-            });
+        });
         entity.setBlocksJson(serializeBlocks(request.blocks()));
         pageContentRepository.save(entity);
+        ragIndexService.indexPageBestEffort(page.getId());
     }
 
     private PageContentEntity getPageContentOrThrow(String pageId) {

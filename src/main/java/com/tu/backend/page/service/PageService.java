@@ -8,6 +8,7 @@ import com.tu.backend.page.dto.PageItemDto;
 import com.tu.backend.page.dto.UpdatePageRequest;
 import com.tu.backend.page.entity.PageEntity;
 import com.tu.backend.page.repository.PageRepository;
+import com.tu.backend.rag.RagIndexService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,15 +27,18 @@ public class PageService {
     private final PageRepository pageRepository;
     private final KnowledgeBaseRepository knowledgeBaseRepository;
     private final PageContentService pageContentService;
+    private final RagIndexService ragIndexService;
 
     public PageService(
         PageRepository pageRepository,
         KnowledgeBaseRepository knowledgeBaseRepository,
-        PageContentService pageContentService
+        PageContentService pageContentService,
+        RagIndexService ragIndexService
     ) {
         this.pageRepository = pageRepository;
         this.knowledgeBaseRepository = knowledgeBaseRepository;
         this.pageContentService = pageContentService;
+        this.ragIndexService = ragIndexService;
     }
 
     @Transactional(readOnly = true)
@@ -116,6 +120,7 @@ public class PageService {
 
         pageContentService.deleteByPageIds(idsToDelete);
         pageRepository.deleteAllById(idsToDelete);
+        ragIndexService.deletePagesBestEffort(root.getKbId(), idsToDelete);
     }
 
     public void deleteByKnowledgeBaseId(String kbId) {
@@ -125,6 +130,7 @@ public class PageService {
             .toList();
         pageContentService.deleteByPageIds(pageIds);
         pageRepository.deleteByKbId(kbId);
+        ragIndexService.deleteKnowledgeBaseBestEffort(kbId);
     }
 
     private void ensureKnowledgeBaseExists(String kbId) {

@@ -19,6 +19,7 @@
 - 块引用查询
 - 被引用块内容回写
 - 整页块同步
+- RAG 检索与重建索引
 
 ## 2. 基础约定
 
@@ -571,3 +572,64 @@ Rules:
 - 页面树与页面内容能完整跑通
 - 引用块能回写源块
 - `x6` 和 `line` 类型以 JSON 原样存储
+
+### 4.5 RAG 接口
+
+#### 4.5.1 知识库问答
+
+- Method: `POST`
+- Path: `/api/rag/query`
+
+请求：
+
+```json
+{
+  "kbId": "kb-demo-1",
+  "query": "引用块如何加载？",
+  "topK": 5
+}
+```
+
+响应：
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "answer": "根据当前知识库中检索到的内容...",
+    "sources": [
+      {
+        "kbId": "kb-demo-1",
+        "pageId": "p-demo-1",
+        "blockId": "b-demo-1",
+        "title": "基础概念",
+        "content": "页面、块内容和引用块...",
+        "blockType": "richtext",
+        "score": 0.82
+      }
+    ]
+  }
+}
+```
+
+#### 4.5.2 重建页面索引
+
+- Method: `POST`
+- Path: `/api/rag/reindex/page/{pageId}`
+
+说明：
+
+- 从 Java 后端读取页面内容，抽取 `richtext`、`table`、`container` 子块文本。
+- `x6` 和 `line` 第一版只索引标题或可提取文本。
+- 调用 FastAPI 内部 `/internal/rag/index`。
+
+#### 4.5.3 重建知识库索引
+
+- Method: `POST`
+- Path: `/api/rag/reindex/kb/{kbId}`
+
+说明：
+
+- 遍历知识库下所有页面并逐页重建索引。
+- 普通页面保存、块同步、块内容更新会自动触发单页 best-effort 重建索引。

@@ -28,6 +28,12 @@ Backend:
 
 - `http://localhost:18080`
 
+RAG service:
+
+- Java entrypoint: `POST http://localhost:18080/api/rag/query`
+- FastAPI internal service: `http://localhost:19080`
+- Qdrant: `http://localhost:6333`
+
 MySQL:
 
 - `localhost:3306`
@@ -94,6 +100,23 @@ Main application source remains under:
 
 - `src/main/java`
 - `src/main/resources`
+
+## RAG Integration
+
+The backend exposes RAG through Java and delegates retrieval/indexing to the standalone Python service in `../tu-rag-service`.
+
+Frontend-facing endpoints:
+
+- `POST /api/rag/query`
+- `POST /api/rag/reindex/page/{pageId}`
+- `POST /api/rag/reindex/kb/{kbId}`
+
+Java calls the FastAPI service configured by:
+
+- `RAG_ENABLED`, default `true`
+- `RAG_SERVICE_URL`, default `http://localhost:19080`
+
+Page content saves, block updates, and block sync trigger best-effort page reindexing. Page and knowledge-base deletion trigger best-effort vector cleanup. If the RAG service is unavailable, ordinary editing and deletion continue; explicit RAG API calls return an API error.
 
 ## External Resource Management
 

@@ -11,6 +11,7 @@ import com.tu.backend.content.entity.PageContentEntity;
 import com.tu.backend.content.repository.PageContentRepository;
 import com.tu.backend.page.entity.PageEntity;
 import com.tu.backend.page.repository.PageRepository;
+import com.tu.backend.rag.RagIndexService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,15 +26,18 @@ public class PageContentService {
     private final PageContentRepository pageContentRepository;
     private final PageRepository pageRepository;
     private final ObjectMapper objectMapper;
+    private final RagIndexService ragIndexService;
 
     public PageContentService(
         PageContentRepository pageContentRepository,
         PageRepository pageRepository,
-        ObjectMapper objectMapper
+        ObjectMapper objectMapper,
+        RagIndexService ragIndexService
     ) {
         this.pageContentRepository = pageContentRepository;
         this.pageRepository = pageRepository;
         this.objectMapper = objectMapper;
+        this.ragIndexService = ragIndexService;
     }
 
     @Transactional(readOnly = true)
@@ -57,6 +61,7 @@ public class PageContentService {
         entity.setBlocksJson(serializeBlocks(request.blocks()));
 
         PageContentEntity saved = pageContentRepository.save(entity);
+        ragIndexService.indexPageBestEffort(saved.getPageId());
         return new PageContentDto(saved.getPageId(), deserializeBlocks(saved.getBlocksJson()));
     }
 

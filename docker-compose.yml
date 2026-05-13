@@ -47,15 +47,42 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      tu-rag-service:
+        condition: service_started
     environment:
       SPRING_PROFILES_ACTIVE: mysql
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/tu_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
       SPRING_DATASOURCE_USERNAME: tu
       SPRING_DATASOURCE_PASSWORD: tu123456
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      RAG_SERVICE_URL: http://tu-rag-service:19080
+      RAG_ENABLED: "true"
     ports:
       - "18080:8080"
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.6
+    container_name: tu-qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant-data:/qdrant/storage
+
+  tu-rag-service:
+    build:
+      context: ../tu-rag-service
+      dockerfile: Dockerfile
+    container_name: tu-rag-service
+    depends_on:
+      - qdrant
+    environment:
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: tu_rag_chunks
+      RAG_VECTOR_SIZE: 256
+    ports:
+      - "19080:19080"
 
 volumes:
   mysql-data:
   postgres-data:
+  qdrant-data:
