@@ -16,6 +16,7 @@ import com.tu.backend.externalresource.entity.ResourceWorkEntity;
 import com.tu.backend.externalresource.repository.ResourceItemRepository;
 import com.tu.backend.externalresource.repository.ResourceTypeRepository;
 import com.tu.backend.externalresource.repository.ResourceWorkRepository;
+import com.tu.backend.reference.service.ReferenceService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,15 +32,18 @@ public class ExternalResourceService {
     private final ResourceTypeRepository typeRepository;
     private final ResourceWorkRepository workRepository;
     private final ResourceItemRepository itemRepository;
+    private final ReferenceService referenceService;
 
     public ExternalResourceService(
         ResourceTypeRepository typeRepository,
         ResourceWorkRepository workRepository,
-        ResourceItemRepository itemRepository
+        ResourceItemRepository itemRepository,
+        ReferenceService referenceService
     ) {
         this.typeRepository = typeRepository;
         this.workRepository = workRepository;
         this.itemRepository = itemRepository;
+        this.referenceService = referenceService;
     }
 
     @Transactional(readOnly = true)
@@ -209,6 +213,9 @@ public class ExternalResourceService {
 
     @Transactional
     public void deleteItem(String id) {
+        if (referenceService.hasResourceItemReferences(id)) {
+            throw new BusinessException(40009, "resource item is in use");
+        }
         itemRepository.delete(findItem(id));
     }
 

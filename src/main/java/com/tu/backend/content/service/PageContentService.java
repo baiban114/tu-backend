@@ -11,6 +11,7 @@ import com.tu.backend.content.entity.PageContentEntity;
 import com.tu.backend.content.repository.PageContentRepository;
 import com.tu.backend.page.entity.PageEntity;
 import com.tu.backend.page.repository.PageRepository;
+import com.tu.backend.reference.service.ReferenceService;
 import com.tu.backend.rag.RagIndexService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,17 +28,20 @@ public class PageContentService {
     private final PageRepository pageRepository;
     private final ObjectMapper objectMapper;
     private final RagIndexService ragIndexService;
+    private final ReferenceService referenceService;
 
     public PageContentService(
         PageContentRepository pageContentRepository,
         PageRepository pageRepository,
         ObjectMapper objectMapper,
-        RagIndexService ragIndexService
+        RagIndexService ragIndexService,
+        ReferenceService referenceService
     ) {
         this.pageContentRepository = pageContentRepository;
         this.pageRepository = pageRepository;
         this.objectMapper = objectMapper;
         this.ragIndexService = ragIndexService;
+        this.referenceService = referenceService;
     }
 
     @Transactional(readOnly = true)
@@ -61,6 +65,7 @@ public class PageContentService {
         entity.setBlocksJson(serializeBlocks(request.blocks()));
 
         PageContentEntity saved = pageContentRepository.save(entity);
+        referenceService.rebuildPageReferences(saved.getPageId(), saved.getBlocksJson());
         ragIndexService.indexPageBestEffort(saved.getPageId());
         return new PageContentDto(saved.getPageId(), deserializeBlocks(saved.getBlocksJson()));
     }
@@ -70,6 +75,7 @@ public class PageContentService {
         if (pageIds.isEmpty()) {
             return;
         }
+        referenceService.deleteByPageIds(pageIds);
         pageContentRepository.deleteByPageIdIn(pageIds);
     }
 
