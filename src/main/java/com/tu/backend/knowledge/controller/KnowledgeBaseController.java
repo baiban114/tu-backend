@@ -2,6 +2,8 @@ package com.tu.backend.knowledge.controller;
 
 import com.tu.backend.common.ApiResponse;
 import com.tu.backend.knowledge.dto.CreateKnowledgeBaseRequest;
+import com.tu.backend.knowledge.dto.ImportRoadmapRequest;
+import com.tu.backend.knowledge.dto.ImportRoadmapResponse;
 import com.tu.backend.knowledge.dto.KnowledgeBaseDto;
 import com.tu.backend.knowledge.dto.UpdateKnowledgeBaseRequest;
 import com.tu.backend.knowledge.service.KnowledgeBaseService;
@@ -37,6 +39,11 @@ public class KnowledgeBaseController {
         return ApiResponse.success(knowledgeBaseService.create(request));
     }
 
+    @PostMapping("/import-roadmap")
+    public ApiResponse<ImportRoadmapResponse> importRoadmap(@RequestBody ImportRoadmapRequest request) {
+        return ApiResponse.success(knowledgeBaseService.importRoadmap(request));
+    }
+
     @PatchMapping("/{id}")
     public ApiResponse<KnowledgeBaseDto> update(
         @PathVariable String id,
@@ -51,4 +58,3 @@ public class KnowledgeBaseController {
         return ApiResponse.success();
     }
 }
-
