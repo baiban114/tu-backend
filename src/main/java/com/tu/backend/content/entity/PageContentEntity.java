@@ -19,7 +19,7 @@ public class PageContentEntity {
     private String pageId;
 
     @Lob
-    @Column(name = "blocks_json", nullable = false, columnDefinition = "longtext")
+    @Column(name = "blocks_json", nullable = false, columnDefinition = "text")
     private String blocksJson;
 
     @Column(name = "created_at", nullable = false)
