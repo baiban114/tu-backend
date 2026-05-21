@@ -1,6 +1,7 @@
 package com.tu.backend.reference.controller;
 
 import com.tu.backend.common.ApiResponse;
+import com.tu.backend.common.PageResponse;
 import com.tu.backend.reference.dto.ReferenceItemDto;
 import com.tu.backend.reference.dto.UpdateExternalReferenceRequest;
 import com.tu.backend.reference.service.ReferenceService;
@@ -14,8 +15,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
-
 @RestController
 @RequestMapping("/api")
 public class ReferenceController {
@@ -27,14 +26,16 @@ public class ReferenceController {
     }
 
     @GetMapping("/references")
-    public ApiResponse<List<ReferenceItemDto>> listReferences(
+    public ApiResponse<PageResponse<ReferenceItemDto>> listReferences(
         @RequestParam(required = false) String category,
         @RequestParam(required = false) String pageId,
         @RequestParam(required = false) String resourceItemId,
         @RequestParam(required = false) String status,
-        @RequestParam(required = false) String q
+        @RequestParam(required = false) String q,
+        @RequestParam(required = false, defaultValue = "0") int page,
+        @RequestParam(required = false, defaultValue = "50") int pageSize
     ) {
-        return ApiResponse.success(referenceService.listReferences(category, pageId, resourceItemId, status, q));
+        return ApiResponse.success(referenceService.listReferences(category, pageId, resourceItemId, status, q, page, pageSize));
     }
 
     @PatchMapping("/external-references/{id}")

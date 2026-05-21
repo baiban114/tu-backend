@@ -109,6 +109,37 @@ public class BlockService {
     }
 
     @Transactional
+    public void deleteAnnotation(String pageId, String blockId, String annotationId) {
+        PageContentEntity contentEntity = getPageContentOrThrow(pageId);
+        ArrayNode blocks = deserializeBlocksAsArrayNode(contentEntity.getBlocksJson());
+        ObjectNode block = findBlock(blocks, blockId);
+        if (block == null) {
+            throw new BusinessException(40001, "block not found");
+        }
+        JsonNode metadata = block.get("metadata");
+        if (metadata instanceof ObjectNode metaNode) {
+            JsonNode annotations = metaNode.get("annotations");
+            if (annotations instanceof ArrayNode annArray) {
+                for (int i = 0; i < annArray.size(); i += 1) {
+                    JsonNode ann = annArray.get(i);
+                    JsonNode idNode = ann.get("id");
+                    String id = idNode == null || idNode.isNull() ? "" : idNode.asText("");
+                    if (annotationId.equals(id)) {
+                        annArray.remove(i);
+                        break;
+                    }
+                }
+                metaNode.set("annotations", annArray);
+                block.set("metadata", metaNode);
+            }
+        }
+        contentEntity.setBlocksJson(serializeBlocks(blocks));
+        pageContentRepository.save(contentEntity);
+        referenceService.rebuildPageReferences(pageId, contentEntity.getBlocksJson());
+        ragIndexService.indexPageBestEffort(pageId);
+    }
+
+    @Transactional
     public void syncBlocks(SyncBlocksRequest request) {
         PageEntity page = pageRepository.findById(request.pageId())
             .orElseThrow(() -> new BusinessException(40001, "page not found"));

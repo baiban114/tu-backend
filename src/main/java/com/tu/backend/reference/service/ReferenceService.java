@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.tu.backend.common.BusinessException;
+import com.tu.backend.common.PageResponse;
 import com.tu.backend.content.entity.PageContentEntity;
 import com.tu.backend.content.repository.PageContentRepository;
 import com.tu.backend.externalresource.entity.ResourceItemEntity;
@@ -79,12 +80,14 @@ public class ReferenceService {
     }
 
     @Transactional(readOnly = true)
-    public List<ReferenceItemDto> listReferences(
+    public PageResponse<ReferenceItemDto> listReferences(
         String category,
         String pageId,
         String resourceItemId,
         String status,
-        String q
+        String q,
+        int page,
+        int pageSize
     ) {
         String normalizedCategory = normalize(category);
         String normalizedPageId = normalize(pageId);
@@ -92,32 +95,56 @@ public class ReferenceService {
         String normalizedStatus = normalize(status);
         String normalizedQuery = normalize(q).toLowerCase(Locale.ROOT);
 
+        int safePage = Math.max(0, page);
+        int safePageSize = Math.max(1, Math.min(pageSize, 200));
+
         Map<String, PageEntity> pageMap = loadPageMap();
         Map<String, PageContentContext> pageContentMap = loadPageContentContextMap();
         Map<String, ResourceItemEntity> resourceItemMap = loadResourceItemMap();
         Map<String, ResourceWorkEntity> resourceWorkMap = loadResourceWorkMap();
         Map<String, ResourceTypeEntity> resourceTypeMap = loadResourceTypeMap();
 
-        List<ReferenceItemDto> items = new ArrayList<>();
-        if (!"external".equals(normalizedCategory)) {
+        List<ReferenceItemDto> allItems = new ArrayList<>();
+        boolean includeInternal = !"external".equals(normalizedCategory) && !"annotation".equals(normalizedCategory);
+        boolean includeExternal = !"internal".equals(normalizedCategory) && !"annotation".equals(normalizedCategory);
+        boolean includeAnnotation = !"internal".equals(normalizedCategory) && !"external".equals(normalizedCategory);
+
+        if (includeInternal) {
             internalReferenceRepository.findAllByOrderByUpdatedAtDescCreatedAtDesc().forEach(entity -> {
                 ReferenceItemDto dto = toInternalDto(entity, pageMap, pageContentMap);
                 if (matches(dto, normalizedPageId, normalizedResourceItemId, normalizedStatus, normalizedQuery)) {
-                    items.add(dto);
+                    allItems.add(dto);
                 }
             });
         }
-        if (!"internal".equals(normalizedCategory)) {
+        if (includeExternal) {
             externalReferenceRepository.findAllByOrderByUpdatedAtDescCreatedAtDesc().forEach(entity -> {
                 ReferenceItemDto dto = toExternalDto(entity, pageMap, pageContentMap, resourceItemMap, resourceWorkMap, resourceTypeMap);
                 if (matches(dto, normalizedPageId, normalizedResourceItemId, normalizedStatus, normalizedQuery)) {
-                    items.add(dto);
+                    allItems.add(dto);
                 }
             });
         }
+        if (includeAnnotation) {
+            for (Map.Entry<String, PageContentContext> entry : pageContentMap.entrySet()) {
+                String pid = entry.getKey();
+                PageEntity pageEntity = pageMap.get(pid);
+                String pageTitle = pageEntity == null ? pid : pageEntity.getTitle();
+                for (PageBlockContext block : entry.getValue().blocks()) {
+                    collectAnnotationReferences(block, pid, pageTitle, allItems,
+                        normalizedPageId, normalizedResourceItemId, normalizedStatus, normalizedQuery);
+                }
+            }
+        }
 
-        items.sort(Comparator.comparing(ReferenceItemDto::id).reversed());
-        return items;
+        allItems.sort(Comparator.comparing(ReferenceItemDto::id).reversed());
+        long total = allItems.size();
+        int fromIndex = safePage * safePageSize;
+        if (fromIndex >= total) {
+            return PageResponse.of(List.of(), total, safePage, safePageSize);
+        }
+        int toIndex = Math.min(fromIndex + safePageSize, (int) total);
+        return PageResponse.of(allItems.subList(fromIndex, toIndex), total, safePage, safePageSize);
     }
 
     @Transactional
@@ -581,6 +608,69 @@ public class ReferenceService {
                 entity.getDisplayText(),
                 entity.getCitationLocator(),
                 entity.getCitationNote()
+            )
+        );
+    }
+
+    private void collectAnnotationReferences(
+        PageBlockContext block,
+        String pageId,
+        String pageTitle,
+        List<ReferenceItemDto> items,
+        String normalizedPageId,
+        String normalizedResourceItemId,
+        String normalizedStatus,
+        String normalizedQuery
+    ) {
+        JsonNode metadata = block.node().get("metadata");
+        if (!(metadata instanceof JsonNode metaNode) || !metaNode.isObject()) {
+            return;
+        }
+        JsonNode annotations = metaNode.get("annotations");
+        if (!(annotations instanceof ArrayNode annArray)) {
+            return;
+        }
+        for (JsonNode ann : annArray) {
+            ReferenceItemDto dto = toAnnotationDto(ann, pageId, pageTitle, block);
+            if (matches(dto, normalizedPageId, normalizedResourceItemId, normalizedStatus, normalizedQuery)) {
+                items.add(dto);
+            }
+        }
+    }
+
+    private ReferenceItemDto toAnnotationDto(JsonNode ann, String pageId, String pageTitle, PageBlockContext block) {
+        String id = text(ann.get("id"));
+        String selectedText = text(ann.get("selectedText"));
+        String note = text(ann.get("note"));
+
+        return new ReferenceItemDto(
+            id,
+            "annotation",
+            true,
+            new ReferenceSourceDto(
+                pageId,
+                pageTitle,
+                block.id(),
+                block.type(),
+                "annotation",
+                id
+            ),
+            new ReferenceTargetDto(
+                "annotation",
+                null,
+                null,
+                null,
+                selectedText,
+                null,
+                note.isBlank() ? "(无备注)" : note,
+                null,
+                null
+            ),
+            "ok",
+            new ReferenceCitationDto(
+                selectedText,
+                null,
+                note
             )
         );
     }
