@@ -37,13 +37,13 @@ public class InternalReferenceRecordEntity {
     @Column(name = "page_id", length = 64, nullable = false)
     private String pageId;
 
-    @Column(name = "block_id", length = 1024, nullable = false)
+    @Column(name = "block_id", length = 128, nullable = false)
     private String blockId;
 
     @Column(name = "source_kind", length = 64, nullable = false)
     private String sourceKind;
 
-    @Column(name = "source_locator", length = 255, nullable = false)
+    @Column(name = "source_locator", length = 128, nullable = false)
     private String sourceLocator;
 
     @Column(name = "target_kind", length = 32, nullable = false)
@@ -52,7 +52,7 @@ public class InternalReferenceRecordEntity {
     @Column(name = "target_page_id", length = 64)
     private String targetPageId;
 
-    @Column(name = "target_block_id", length = 1024)
+    @Column(name = "target_block_id", length = 128)
     private String targetBlockId;
 
     @Column(name = "ref_kind", length = 64, nullable = false)

@@ -1,12 +1,15 @@
 package com.tu.backend;
 
 import com.tu.backend.rag.RagProperties;
+import com.tu.backend.taskintegration.IntegrationProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 
 @SpringBootApplication
-@EnableConfigurationProperties(RagProperties.class)
+@EnableDiscoveryClient
+@EnableConfigurationProperties({RagProperties.class, IntegrationProperties.class})
 public class TuBackendApplication {
 
     public static void main(String[] args) {

@@ -1,0 +1,45 @@
+services:
+  tu-backend:
+    depends_on:
+      nacos:
+        condition: service_started
+      mysql:
+        condition: service_healthy
+      tu-rag-service:
+        condition: service_started
+      tu-integration-service:
+        condition: service_started
+    environment:
+      NACOS_SERVER_ADDR: nacos:8848
+      SPRING_PROFILES_ACTIVE: mysql
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/tu_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+      SPRING_DATASOURCE_USERNAME: tu
+      SPRING_DATASOURCE_PASSWORD: tu123456
+      RAG_SERVICE_URL: http://tu-rag-service:19080
+      QDRANT_URL: http://qdrant:6333
+      INTEGRATION_SERVICE_URL: http://tu-integration-service:18100
+
+  tu-gateway:
+    depends_on:
+      nacos:
+        condition: service_started
+      tu-backend:
+        condition: service_started
+    environment:
+      NACOS_SERVER_ADDR: nacos:8848
+      TU_BACKEND_URI: http://tu-backend:8080
+
+  tu-integration-service:
+    depends_on:
+      nacos:
+        condition: service_started
+    environment:
+      NACOS_SERVER_ADDR: nacos:8848
+      KANEO_BASE_URL: http://kaneo:5173
+
+  tu-rag-service:
+    depends_on:
+      qdrant:
+        condition: service_started
+    environment:
+      QDRANT_URL: http://qdrant:6333

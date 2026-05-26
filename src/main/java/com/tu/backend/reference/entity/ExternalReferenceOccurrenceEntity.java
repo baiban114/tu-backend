@@ -36,19 +36,19 @@ public class ExternalReferenceOccurrenceEntity {
     @Column(name = "page_id", length = 64, nullable = false)
     private String pageId;
 
-    @Column(name = "block_id", length = 1024, nullable = false)
+    @Column(name = "block_id", length = 128, nullable = false)
     private String blockId;
 
     @Column(name = "source_kind", length = 64, nullable = false)
     private String sourceKind;
 
-    @Column(name = "source_locator", length = 255, nullable = false)
+    @Column(name = "source_locator", length = 128, nullable = false)
     private String sourceLocator;
 
     @Column(name = "occurrence_index", nullable = false)
     private Integer occurrenceIndex;
 
-    @Column(length = 1024, nullable = false)
+    @Column(length = 350, nullable = false)
     private String url;
 
     @Column(name = "link_text", length = 255)

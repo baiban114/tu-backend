@@ -194,3 +194,49 @@ docker-compose.yml
 后端 Java 代码
 pom.xml
 只有 docker compose down -v 才会把这个卷一起删掉
+
+
+## kaneo
+› 我该怎么启动Kaneo？我docker compose build之后没有见到有这个image
+
+
+• docker compose build 看不到 Kaneo image 是正常的。
+
+原因：kaneo 在 compose 里是这种：
+
+kaneo:                                                                                                                              
+image: ghcr.io/usekaneo/kaneo:latest
+
+它不是 build: 服务，所以 docker compose build 不会构建它，只会在 pull 或 up 时拉取。
+
+启动方式：
+
+cd D:\project\tu\tu-backend
+
+docker compose pull kaneo                                                                                                           
+docker compose up -d kaneo-postgres kaneo   
+
+或者启动整套：
+
+cd D:\project\tu\tu-backend
+
+docker compose up -d --build   
+
+
+浏览器访问：
+
+http://localhost:11337
+
+然后在 Kaneo 里注册/登录，去账号设置里创建 API Key。
+
+在 tu 的 /tasks 集成配置里，注意地址要按运行环境填：
+
+- 如果 tu-integration-service 也跑在 Docker Compose 里，填：
+
+  http://kaneo:1337
+
+- 如果你本机直接运行 tu-backend/tu-integration-service，填：
+
+  http://localhost:11337
+
+因为 Docker 容器里的 localhost 指容器自己，不是你的宿主机。    

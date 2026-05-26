@@ -1,6 +1,10 @@
 spring:
   application:
     name: tu-backend
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:mysql}
   datasource:
@@ -26,3 +30,6 @@ logging:
 rag:
   enabled: ${RAG_ENABLED:true}
   service-url: ${RAG_SERVICE_URL:http://localhost:19080}
+
+integration:
+  service-url: ${INTEGRATION_SERVICE_URL:http://localhost:18100}

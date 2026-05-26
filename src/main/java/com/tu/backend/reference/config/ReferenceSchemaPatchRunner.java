@@ -26,19 +26,7 @@ public class ReferenceSchemaPatchRunner {
             }
 
             String normalized = productName.toLowerCase();
-            try {
-                if (normalized.contains("mysql") || normalized.contains("mariadb")) {
-                    jdbcTemplate.execute("ALTER TABLE internal_reference_record MODIFY COLUMN block_id VARCHAR(1024) NOT NULL");
-                    jdbcTemplate.execute("ALTER TABLE internal_reference_record MODIFY COLUMN target_block_id VARCHAR(1024) NULL");
-                    jdbcTemplate.execute("ALTER TABLE external_reference_occurrence MODIFY COLUMN block_id VARCHAR(1024) NOT NULL");
-                } else if (normalized.contains("postgresql")) {
-                    jdbcTemplate.execute("ALTER TABLE internal_reference_record ALTER COLUMN block_id TYPE VARCHAR(1024)");
-                    jdbcTemplate.execute("ALTER TABLE internal_reference_record ALTER COLUMN target_block_id TYPE VARCHAR(1024)");
-                    jdbcTemplate.execute("ALTER TABLE external_reference_occurrence ALTER COLUMN block_id TYPE VARCHAR(1024)");
-                }
-            } catch (Exception ex) {
-                log.warn("Failed to patch reference schema widths: {}", ex.getMessage());
-            }
+            log.debug("Reference schema patch skipped for {}", normalized);
         };
     }
 

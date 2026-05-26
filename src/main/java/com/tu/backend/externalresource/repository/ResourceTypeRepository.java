@@ -4,6 +4,7 @@ import com.tu.backend.externalresource.entity.ResourceTypeEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface ResourceTypeRepository extends JpaRepository<ResourceTypeEntity, String> {
 
@@ -12,4 +13,6 @@ public interface ResourceTypeRepository extends JpaRepository<ResourceTypeEntity
     boolean existsByCode(String code);
 
     boolean existsByName(String name);
+
+    Optional<ResourceTypeEntity> findByCode(String code);
 }

@@ -1,10 +1,13 @@
 package com.tu.backend.content.dto;
 
-import jakarta.validation.constraints.NotNull;
-
 import java.util.List;
+import java.util.Map;
 
 public record SavePageContentRequest(
-    @NotNull List<Object> blocks
+    String content,
+    List<Object> embeds,
+    List<Object> annotations,
+    Map<String, Object> metadata,
+    List<Object> blocks
 ) {
 }
