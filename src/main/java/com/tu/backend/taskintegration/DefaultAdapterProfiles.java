@@ -54,12 +54,14 @@ public final class DefaultAdapterProfiles {
                   "body": {
                     "title": "{{title}}",
                     "description": "{{description}}",
+                    "projectId": "{{projectId}}",
                     "status": "{{status}}",
                     "priority": "{{priority}}",
+                    "position": "{{position}}",
                     "assigneeId": "{{assigneeId}}",
                     "dueDate": "{{dueDate}}"
                   },
-                  "defaults": { "priority": "no-priority" }
+                  "defaults": { "description": "", "priority": "no-priority", "position": "0" }
                 },
                 "updateTask": {
                   "method": "PUT",

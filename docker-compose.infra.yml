@@ -1,7 +1,7 @@
 services:
   nacos:
     image: nacos/nacos-server:v2.5.1
-    container_name: tu-nacos
+    container_name: nacos
     environment:
       MODE: standalone
       NACOS_AUTH_ENABLE: "false"
@@ -11,12 +11,12 @@ services:
 
   mysql:
     image: mysql:8.4
-    container_name: tu-mysql
+    container_name: mysql
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-tu_db}
-      MYSQL_USER: ${MYSQL_USER:-tu}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-tu123456}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-app_db}
+      MYSQL_USER: ${MYSQL_USER:-app}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-app123456}
     ports:
       - "${MYSQL_PORT:-3306}:3306"
     volumes:
@@ -32,26 +32,26 @@ services:
 
   postgres:
     image: postgres:16
-    container_name: tu-postgres
+    container_name: postgres
     profiles:
       - postgresql
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-tu_db}
-      POSTGRES_USER: ${POSTGRES_USER:-tu}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tu123456}
+      POSTGRES_DB: ${POSTGRES_DB:-app_db}
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app123456}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tu} -d ${POSTGRES_DB:-tu_db}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app} -d ${POSTGRES_DB:-app_db}"]
       interval: 10s
       timeout: 5s
       retries: 10
 
   qdrant:
     image: qdrant/qdrant:v1.12.6
-    container_name: tu-qdrant
+    container_name: qdrant
     ports:
       - "${QDRANT_PORT:-6333}:6333"
     volumes:
@@ -59,7 +59,7 @@ services:
 
   kaneo-postgres:
     image: postgres:16
-    container_name: tu-kaneo-postgres
+    container_name: kaneo-postgres
     environment:
       POSTGRES_DB: ${KANEO_POSTGRES_DB:-kaneo}
       POSTGRES_USER: ${KANEO_POSTGRES_USER:-kaneo}
@@ -76,7 +76,7 @@ services:
 
   kaneo:
     image: ghcr.io/usekaneo/kaneo:latest
-    container_name: tu-kaneo
+    container_name: kaneo
     depends_on:
       kaneo-postgres:
         condition: service_healthy
