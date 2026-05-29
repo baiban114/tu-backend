@@ -4,22 +4,35 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tu.backend.ai.dto.GenerateLearningPlanRequest;
 import com.tu.backend.ai.dto.LearningPlanNodeDto;
 import com.tu.backend.ai.dto.LearningPlanResponseDto;
+import com.tu.backend.ai.entity.AiAgentRunLogEntity;
 import com.tu.backend.common.BusinessException;
 import java.util.ArrayList;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 @Service
 public class LearningPlanAgentService {
 
+    private static final Logger log = LoggerFactory.getLogger(LearningPlanAgentService.class);
     private static final int MAX_NODES = 80;
     private static final int MAX_DEPTH = 6;
 
     private final AiChatClient chatClient;
+    private final AiAgentRuntimeConfigResolver configResolver;
+    private final AiAgentRunLogService runLogService;
     private final ObjectMapper objectMapper;
 
-    public LearningPlanAgentService(AiChatClient chatClient, ObjectMapper objectMapper) {
+    public LearningPlanAgentService(
+        AiChatClient chatClient,
+        AiAgentRuntimeConfigResolver configResolver,
+        AiAgentRunLogService runLogService,
+        ObjectMapper objectMapper
+    ) {
         this.chatClient = chatClient;
+        this.configResolver = configResolver;
+        this.runLogService = runLogService;
         this.objectMapper = objectMapper;
     }
 
@@ -28,15 +41,76 @@ public class LearningPlanAgentService {
         if (topic.isBlank()) {
             throw new BusinessException(40000, "topic is required");
         }
-        String rawJson = chatClient.completeJson(systemPrompt(), userPrompt(request, topic));
-        LearningPlanResponseDto parsed = parse(rawJson);
-        String title = normalize(parsed.title()).isBlank() ? topic + " 学习计划" : normalize(parsed.title());
-        List<LearningPlanNodeDto> items = validateNodes(parsed.items(), 1, new Counter());
-        if (items.isEmpty()) {
-            throw new BusinessException(50324, "ai agent returned empty learning plan");
+        String systemPrompt = systemPrompt();
+        String userPrompt = userPrompt(request, topic);
+        AiAgentRuntimeConfig config = configResolver.runtimeConfig();
+        AiAgentRunLogEntity runLog = startRunLog(config, systemPrompt, userPrompt);
+        AiChatCompletionResult completion = null;
+        try {
+            completion = chatClient.completeJson(config, systemPrompt, userPrompt);
+            LearningPlanResponseDto parsed = parse(completion.content());
+            String title = normalize(parsed.title()).isBlank() ? topic + " 学习计划" : normalize(parsed.title());
+            List<LearningPlanNodeDto> items = validateNodes(parsed.items(), 1, new Counter());
+            if (items.isEmpty()) {
+                throw new BusinessException(50324, "ai agent returned empty learning plan");
+            }
+            double total = roundHours(items.stream().mapToDouble(this::nodeHours).sum());
+            LearningPlanResponseDto response = new LearningPlanResponseDto(title, total, items);
+            markRunLogSuccess(runLog, completion, serializeOutput(response));
+            return response;
+        } catch (RuntimeException ex) {
+            markRunLogFailed(runLog, completion, ex);
+            throw ex;
         }
-        double total = roundHours(items.stream().mapToDouble(this::nodeHours).sum());
-        return new LearningPlanResponseDto(title, total, items);
+    }
+
+    private AiAgentRunLogEntity startRunLog(
+        AiAgentRuntimeConfig config,
+        String systemPrompt,
+        String userPrompt
+    ) {
+        try {
+            return runLogService.start(AiAgentRunLogService.TASK_LEARNING_PLAN, config, systemPrompt, userPrompt);
+        } catch (RuntimeException ex) {
+            log.error("failed to start ai agent run log; taskType={}", AiAgentRunLogService.TASK_LEARNING_PLAN, ex);
+            return null;
+        }
+    }
+
+    private void markRunLogSuccess(
+        AiAgentRunLogEntity runLog,
+        AiChatCompletionResult completion,
+        String output
+    ) {
+        if (runLog == null) {
+            return;
+        }
+        try {
+            runLogService.markSuccess(runLog.getId(), completion, output);
+        } catch (RuntimeException ex) {
+            log.error("failed to persist ai agent run success log; runId={}", runLog.getId(), ex);
+        }
+    }
+
+    private void markRunLogFailed(
+        AiAgentRunLogEntity runLog,
+        AiChatCompletionResult completion,
+        RuntimeException original
+    ) {
+        if (runLog == null) {
+            return;
+        }
+        try {
+            runLogService.markFailed(runLog.getId(), completion, original);
+        } catch (RuntimeException logException) {
+            log.error(
+                "failed to persist ai agent run failure log; runId={}; originalException={}: {}",
+                runLog.getId(),
+                original.getClass().getName(),
+                nullToBlank(original.getMessage()),
+                logException
+            );
+        }
     }
 
     private LearningPlanResponseDto parse(String rawJson) {
@@ -124,6 +198,14 @@ public class LearningPlanAgentService {
             return normalized;
         }
         return normalized.substring(0, maxLength) + "...<truncated " + (normalized.length() - maxLength) + " chars>";
+    }
+
+    private String serializeOutput(LearningPlanResponseDto response) {
+        try {
+            return objectMapper.writeValueAsString(response);
+        } catch (Exception ex) {
+            return "";
+        }
     }
 
     private String systemPrompt() {

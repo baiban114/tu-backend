@@ -19,6 +19,15 @@ spring:
         format_sql: true
   jackson:
     default-property-inclusion: non_null
+  ai:
+    model:
+      chat: none
+      embedding: none
+      image: none
+      moderation: none
+      audio:
+        speech: none
+        transcription: none
 
 server:
   port: 8080

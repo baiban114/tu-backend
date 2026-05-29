@@ -2,5 +2,5 @@ package com.tu.backend.ai;
 
 public interface AiChatClient {
 
-    String completeJson(String systemPrompt, String userPrompt);
+    AiChatCompletionResult completeJson(AiAgentRuntimeConfig config, String systemPrompt, String userPrompt);
 }

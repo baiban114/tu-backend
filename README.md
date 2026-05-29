@@ -53,7 +53,6 @@ $env:SPRING_PROFILES_ACTIVE='mysql'
 $env:SPRING_DATASOURCE_URL='jdbc:mysql://localhost:3306/tu_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai'
 $env:SPRING_DATASOURCE_USERNAME='tu'
 $env:SPRING_DATASOURCE_PASSWORD='tu123456'
-$env:TU_SECRET_ENCRYPTION_KEY='MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY='
 mvn spring-boot:run
 ```
 
@@ -64,7 +63,6 @@ $env:SPRING_PROFILES_ACTIVE='postgresql'
 $env:SPRING_DATASOURCE_URL='jdbc:postgresql://localhost:5432/tu_db'
 $env:SPRING_DATASOURCE_USERNAME='tu'
 $env:SPRING_DATASOURCE_PASSWORD='tu123456'
-$env:TU_SECRET_ENCRYPTION_KEY='MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY='
 mvn spring-boot:run
 ```
 
@@ -72,7 +70,7 @@ No data synchronization is performed between MySQL and PostgreSQL.
 
 ## System secret key
 
-AI Agent API Keys saved in the system configuration page are encrypted before they are written to the database. The backend must have `TU_SECRET_ENCRYPTION_KEY` set to a base64-encoded 32-byte key.
+AI Agent API Keys saved in the system configuration page are encrypted before they are written to the database. Local development uses the development fallback key in `application.yml`; real deployments should override it with `TU_SECRET_ENCRYPTION_KEY`, a base64-encoded 32-byte key.
 
 Development-only example:
 
@@ -85,6 +83,17 @@ Generate a new key for real deployments:
 ```powershell
 [Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Maximum 256 }))
 ```
+
+## AI Agent records
+
+AI Agent model calls use Spring AI's OpenAI-compatible starter. Runtime `baseUrl`, `model`, and API Key still come from the system configuration page, not from `application.yml`.
+
+Business AI generation calls, such as learning-plan generation, are recorded in `ai_agent_run_log`. Each record stores the full system/user prompts, request body, raw response, parsed output, duration, status, and provider-returned token usage. Connection tests under `/api/ai/settings/test` are intentionally not recorded.
+
+Read records:
+
+- `GET /api/ai/runs?page=0&pageSize=50&taskType=&status=`
+- `GET /api/ai/runs/{id}`
 
 ## Local development
 

@@ -1,122 +1,174 @@
 package com.tu.backend.ai;
 
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.client.ExpectedCount.once;
-import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
-import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
-import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
-import static org.springframework.test.web.client.response.MockRestResponseCreators.withUnauthorizedRequest;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tu.backend.common.BusinessException;
-import org.junit.jupiter.api.BeforeEach;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
-import org.springframework.http.client.ClientHttpRequestFactory;
-import org.springframework.test.web.client.MockRestServiceServer;
-import org.springframework.web.client.RestClient;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.metadata.ChatResponseMetadata;
+import org.springframework.ai.chat.metadata.Usage;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
 class OpenAiCompatibleChatClientTest {
 
-    private RestClient.Builder restClientBuilder;
-    private MockRestServiceServer server;
-    private ObjectMapper objectMapper;
-
-    @BeforeEach
-    void setUp() {
-        restClientBuilder = RestClient.builder();
-        server = MockRestServiceServer.bindTo(restClientBuilder).build();
-        objectMapper = new ObjectMapper();
-    }
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
     void rejectsDisabledAgent() {
-        OpenAiCompatibleChatClient client = new OpenAiCompatibleChatClient(
-            () -> new AiAgentRuntimeConfig(false, "", "", ""),
-            restClientBuilder,
-            objectMapper
-        );
+        OpenAiCompatibleChatClient client = client((config, options) -> responseModel("{\"ok\":true}", usage(1, 1, 2)));
 
-        assertThatThrownBy(() -> client.completeJson("system", "user"))
+        assertThatThrownBy(() -> client.completeJson(new AiAgentRuntimeConfig(false, "", "", ""), "system", "user"))
             .isInstanceOf(BusinessException.class)
             .hasMessage("ai agent disabled");
     }
 
     @Test
-    void rejectsIncompleteConfiguration() {
-        OpenAiCompatibleChatClient client = new OpenAiCompatibleChatClient(
-            () -> new AiAgentRuntimeConfig(true, "https://api.example.com/v1", "", "model"),
-            restClientBuilder,
-            objectMapper
-        );
+    void canBeCreatedBySpringContainer() {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.registerBean(ObjectMapper.class, (Supplier<ObjectMapper>) ObjectMapper::new);
+            context.register(OpenAiCompatibleChatClient.class);
+            context.refresh();
 
-        assertThatThrownBy(() -> client.completeJson("system", "user"))
+            assertThat(context.getBean(OpenAiCompatibleChatClient.class)).isNotNull();
+            assertThat(context.getBean(AiChatClient.class)).isNotNull();
+            assertThat(context.getBean(AiAgentConnectionTester.class)).isNotNull();
+        }
+    }
+
+    @Test
+    void rejectsIncompleteConfiguration() {
+        OpenAiCompatibleChatClient client = client((config, options) -> responseModel("{\"ok\":true}", usage(1, 1, 2)));
+
+        assertThatThrownBy(() -> client.completeJson(new AiAgentRuntimeConfig(true, "https://api.example.com/v1", "", "model"), "system", "user"))
             .isInstanceOf(BusinessException.class)
             .hasMessage("ai agent configuration incomplete");
     }
 
     @Test
-    void includesHttpFailureDetails() {
-        server.expect(once(), requestTo("https://api.example.com/v1/chat/completions"))
-            .andExpect(method(HttpMethod.POST))
-            .andRespond(withUnauthorizedRequest()
-                .contentType(MediaType.APPLICATION_JSON)
-                .body("{\"error\":{\"message\":\"bad api key\",\"type\":\"auth_error\"}}"));
+    void wrapsModelFailuresWithDetailedContext() {
+        OpenAiCompatibleChatClient client = client((config, options) -> prompt -> {
+            throw new IllegalArgumentException("synthetic spring ai failure");
+        });
 
-        OpenAiCompatibleChatClient client = new OpenAiCompatibleChatClient(
-            () -> new AiAgentRuntimeConfig(true, "https://api.example.com/v1", "sk-secret", "model-a"),
-            restClientBuilder,
-            objectMapper
-        );
-
-        assertThatThrownBy(() -> client.completeJson("system", "user"))
-            .isInstanceOf(BusinessException.class)
-            .hasMessageContaining("ai agent request failed")
-            .hasMessageContaining("POST https://api.example.com/v1/chat/completions")
-            .hasMessageContaining("model=model-a")
-            .hasMessageContaining("httpStatus=401")
-            .hasMessageContaining("bad api key")
-            .hasMessageNotContaining("sk-secret");
-    }
-
-    @Test
-    void wrapsUnexpectedRequestFailuresWithDetails() {
-        ClientHttpRequestFactory failingFactory = (uri, method) -> {
-            throw new IllegalArgumentException("synthetic request factory failure");
-        };
-        OpenAiCompatibleChatClient client = new OpenAiCompatibleChatClient(
-            () -> new AiAgentRuntimeConfig(true, "https://api.example.com", "sk-secret", "model-a"),
-            RestClient.builder().requestFactory(failingFactory),
-            objectMapper
-        );
-
-        assertThatThrownBy(() -> client.completeJson("system", "user"))
+        assertThatThrownBy(() -> client.completeJson(new AiAgentRuntimeConfig(true, "https://api.example.com", "sk-secret", "model-a"), "system", "user"))
             .isInstanceOf(BusinessException.class)
             .hasMessageContaining("ai agent request failed")
             .hasMessageContaining("POST https://api.example.com/chat/completions")
             .hasMessageContaining("model=model-a")
             .hasMessageContaining("java.lang.IllegalArgumentException")
-            .hasMessageContaining("synthetic request factory failure")
+            .hasMessageContaining("synthetic spring ai failure")
             .hasMessageNotContaining("sk-secret");
     }
 
     @Test
-    void readsResponseAsStringAndParsesContent() {
-        server.expect(once(), requestTo("https://api.example.com/chat/completions"))
-            .andExpect(method(HttpMethod.POST))
-            .andRespond(withSuccess(
-                "{\"choices\":[{\"message\":{\"content\":\"{\\\"ok\\\":true}\"}}]}",
-                MediaType.APPLICATION_JSON
-            ));
+    void readsSpringAiResponseContentAndUsage() {
+        AtomicReference<Prompt> promptRef = new AtomicReference<>();
+        OpenAiCompatibleChatClient client = client((config, options) -> prompt -> {
+            promptRef.set(prompt);
+            assertThat(options.getBaseUrl()).isEqualTo("https://api.example.com");
+            assertThat(options.getApiKey()).isEqualTo("sk-secret");
+            assertThat(options.getModel()).isEqualTo("model-a");
+            assertThat(options.getTemperature()).isEqualTo(0.2);
+            assertThat(options.getResponseFormat().getType().name()).isEqualTo("JSON_OBJECT");
+            return response("{\"ok\":true}", usage(12, 8, 20));
+        });
 
-        OpenAiCompatibleChatClient client = new OpenAiCompatibleChatClient(
-            () -> new AiAgentRuntimeConfig(true, "https://api.example.com", "sk-secret", "model-a"),
-            restClientBuilder,
-            objectMapper
+        AiChatCompletionResult result = client.completeJson(
+            new AiAgentRuntimeConfig(true, "https://api.example.com/", "sk-secret", "model-a"),
+            "system prompt",
+            "user prompt"
         );
 
-        assertThat(client.completeJson("system", "user")).isEqualTo("{\"ok\":true}");
+        assertThat(result.content()).isEqualTo("{\"ok\":true}");
+        assertThat(result.promptTokens()).isEqualTo(12);
+        assertThat(result.completionTokens()).isEqualTo(8);
+        assertThat(result.totalTokens()).isEqualTo(20);
+        assertThat(result.requestBodyJson()).contains("\"baseUrl\":\"https://api.example.com\"");
+        assertThat(result.requestBodyJson()).contains("\"model\":\"model-a\"");
+        assertThat(result.requestBodyJson()).contains("system prompt");
+        assertThat(result.requestBodyJson()).doesNotContain("sk-secret");
+        assertThat(result.rawResponseBody()).contains("\"content\":\"{\\\"ok\\\":true}\"");
+        assertThat(result.rawResponseBody()).contains("\"totalTokens\":20");
+        assertThat(promptRef.get().getSystemMessage().getText()).isEqualTo("system prompt");
+        assertThat(promptRef.get().getUserMessage().getText()).isEqualTo("user prompt");
+    }
+
+    @Test
+    void keepsTokenMetricsNullWhenUsageIsMissing() {
+        OpenAiCompatibleChatClient client = client((config, options) -> responseModel("{\"ok\":true}", null));
+
+        AiChatCompletionResult result = client.completeJson(
+            new AiAgentRuntimeConfig(true, "https://api.example.com", "sk-secret", "model-a"),
+            "system",
+            "user"
+        );
+
+        assertThat(result.promptTokens()).isNull();
+        assertThat(result.completionTokens()).isNull();
+        assertThat(result.totalTokens()).isNull();
+        assertThat(result.rawResponseBody()).contains("\"results\"");
+    }
+
+    @Test
+    void rejectsEmptyResponseWithSerializedSpringAiResponse() {
+        OpenAiCompatibleChatClient client = client((config, options) -> responseModel("", usage(1, 0, 1)));
+
+        assertThatThrownBy(() -> client.completeJson(new AiAgentRuntimeConfig(true, "https://api.example.com", "sk-secret", "model-a"), "system", "user"))
+            .isInstanceOf(BusinessException.class)
+            .hasMessageContaining("ai agent returned empty response")
+            .hasMessageContaining("POST https://api.example.com/chat/completions")
+            .hasMessageContaining("response=");
+    }
+
+    private OpenAiCompatibleChatClient client(OpenAiCompatibleChatClient.ChatModelFactory factory) {
+        return new OpenAiCompatibleChatClient(objectMapper, factory);
+    }
+
+    private ChatModel responseModel(String content, Usage usage) {
+        return prompt -> response(content, usage);
+    }
+
+    private ChatResponse response(String content, Usage usage) {
+        return new ChatResponse(
+            List.of(new Generation(new AssistantMessage(content))),
+            ChatResponseMetadata.builder()
+                .id("chatcmpl-test")
+                .model("model-a")
+                .usage(usage)
+                .build()
+        );
+    }
+
+    private Usage usage(Integer promptTokens, Integer completionTokens, Integer totalTokens) {
+        return new Usage() {
+            @Override
+            public Integer getPromptTokens() {
+                return promptTokens;
+            }
+
+            @Override
+            public Integer getCompletionTokens() {
+                return completionTokens;
+            }
+
+            @Override
+            public Integer getTotalTokens() {
+                return totalTokens;
+            }
+
+            @Override
+            public Object getNativeUsage() {
+                return null;
+            }
+        };
     }
 }
