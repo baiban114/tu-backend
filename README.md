@@ -53,6 +53,7 @@ $env:SPRING_PROFILES_ACTIVE='mysql'
 $env:SPRING_DATASOURCE_URL='jdbc:mysql://localhost:3306/tu_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai'
 $env:SPRING_DATASOURCE_USERNAME='tu'
 $env:SPRING_DATASOURCE_PASSWORD='tu123456'
+$env:TU_SECRET_ENCRYPTION_KEY='MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY='
 mvn spring-boot:run
 ```
 
@@ -63,10 +64,27 @@ $env:SPRING_PROFILES_ACTIVE='postgresql'
 $env:SPRING_DATASOURCE_URL='jdbc:postgresql://localhost:5432/tu_db'
 $env:SPRING_DATASOURCE_USERNAME='tu'
 $env:SPRING_DATASOURCE_PASSWORD='tu123456'
+$env:TU_SECRET_ENCRYPTION_KEY='MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY='
 mvn spring-boot:run
 ```
 
 No data synchronization is performed between MySQL and PostgreSQL.
+
+## System secret key
+
+AI Agent API Keys saved in the system configuration page are encrypted before they are written to the database. The backend must have `TU_SECRET_ENCRYPTION_KEY` set to a base64-encoded 32-byte key.
+
+Development-only example:
+
+```powershell
+$env:TU_SECRET_ENCRYPTION_KEY='MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY='
+```
+
+Generate a new key for real deployments:
+
+```powershell
+[Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Maximum 256 }))
+```
 
 ## Local development
 

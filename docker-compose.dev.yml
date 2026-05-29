@@ -15,6 +15,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/tu_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
       SPRING_DATASOURCE_USERNAME: tu
       SPRING_DATASOURCE_PASSWORD: tu123456
+      TU_SECRET_ENCRYPTION_KEY: ${TU_SECRET_ENCRYPTION_KEY:-MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
       RAG_SERVICE_URL: http://tu-rag-service:19080
       QDRANT_URL: http://qdrant:6333
       INTEGRATION_SERVICE_URL: http://tu-integration-service:18100

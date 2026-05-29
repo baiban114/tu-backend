@@ -33,3 +33,7 @@ rag:
 
 integration:
   service-url: ${INTEGRATION_SERVICE_URL:http://localhost:18100}
+
+secret:
+  # Development fallback key. Override TU_SECRET_ENCRYPTION_KEY in production.
+  encryption-key: ${TU_SECRET_ENCRYPTION_KEY:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
