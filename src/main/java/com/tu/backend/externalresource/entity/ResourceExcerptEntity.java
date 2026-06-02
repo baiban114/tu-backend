@@ -6,43 +6,34 @@ import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
 
 import java.time.LocalDateTime;
 
 @Entity
-@Table(
-    name = "external_resource_item",
-    uniqueConstraints = {
-        @UniqueConstraint(name = "uk_external_resource_item_identity", columnNames = {"type_id", "identity_value"})
-    }
-)
-public class ResourceItemEntity {
+@Table(name = "external_resource_excerpt")
+public class ResourceExcerptEntity {
 
     @Id
     @Column(length = 64, nullable = false)
     private String id;
 
-    @Column(name = "type_id", length = 64, nullable = false)
-    private String typeId;
-
-    @Column(name = "work_id", length = 64)
-    private String workId;
+    @Column(name = "resource_item_id", length = 64, nullable = false)
+    private String resourceItemId;
 
     @Column(length = 255, nullable = false)
     private String title;
 
-    @Column(name = "identity_value", length = 512)
-    private String identityValue;
+    @Column(length = 255)
+    private String locator;
 
-    @Column(name = "source_url", length = 1024)
-    private String sourceUrl;
-
-    @Column(length = 128)
-    private String edition;
+    @Column(name = "excerpt_text", columnDefinition = "text", nullable = false)
+    private String excerptText;
 
     @Column(length = 1024)
     private String note;
+
+    @Column(name = "sort_order", nullable = false)
+    private Integer sortOrder;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
@@ -55,6 +46,9 @@ public class ResourceItemEntity {
         LocalDateTime now = LocalDateTime.now();
         this.createdAt = now;
         this.updatedAt = now;
+        if (this.sortOrder == null) {
+            this.sortOrder = 0;
+        }
     }
 
     @PreUpdate
@@ -70,20 +64,12 @@ public class ResourceItemEntity {
         this.id = id;
     }
 
-    public String getTypeId() {
-        return typeId;
+    public String getResourceItemId() {
+        return resourceItemId;
     }
 
-    public void setTypeId(String typeId) {
-        this.typeId = typeId;
-    }
-
-    public String getWorkId() {
-        return workId;
-    }
-
-    public void setWorkId(String workId) {
-        this.workId = workId;
+    public void setResourceItemId(String resourceItemId) {
+        this.resourceItemId = resourceItemId;
     }
 
     public String getTitle() {
@@ -94,28 +80,20 @@ public class ResourceItemEntity {
         this.title = title;
     }
 
-    public String getIdentityValue() {
-        return identityValue;
+    public String getLocator() {
+        return locator;
     }
 
-    public void setIdentityValue(String identityValue) {
-        this.identityValue = identityValue;
+    public void setLocator(String locator) {
+        this.locator = locator;
     }
 
-    public String getSourceUrl() {
-        return sourceUrl;
+    public String getExcerptText() {
+        return excerptText;
     }
 
-    public void setSourceUrl(String sourceUrl) {
-        this.sourceUrl = sourceUrl;
-    }
-
-    public String getEdition() {
-        return edition;
-    }
-
-    public void setEdition(String edition) {
-        this.edition = edition;
+    public void setExcerptText(String excerptText) {
+        this.excerptText = excerptText;
     }
 
     public String getNote() {
@@ -124,6 +102,14 @@ public class ResourceItemEntity {
 
     public void setNote(String note) {
         this.note = note;
+    }
+
+    public Integer getSortOrder() {
+        return sortOrder;
+    }
+
+    public void setSortOrder(Integer sortOrder) {
+        this.sortOrder = sortOrder;
     }
 
     public LocalDateTime getCreatedAt() {

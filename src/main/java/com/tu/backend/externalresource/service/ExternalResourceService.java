@@ -2,17 +2,22 @@ package com.tu.backend.externalresource.service;
 
 import com.tu.backend.common.BusinessException;
 import com.tu.backend.externalresource.dto.CreateResourceItemRequest;
+import com.tu.backend.externalresource.dto.CreateResourceExcerptRequest;
 import com.tu.backend.externalresource.dto.CreateResourceTypeRequest;
 import com.tu.backend.externalresource.dto.CreateResourceWorkRequest;
+import com.tu.backend.externalresource.dto.ResourceExcerptDto;
 import com.tu.backend.externalresource.dto.ResourceItemDto;
 import com.tu.backend.externalresource.dto.ResourceTypeDto;
 import com.tu.backend.externalresource.dto.ResourceWorkDto;
+import com.tu.backend.externalresource.dto.UpdateResourceExcerptRequest;
 import com.tu.backend.externalresource.dto.UpdateResourceItemRequest;
 import com.tu.backend.externalresource.dto.UpdateResourceTypeRequest;
 import com.tu.backend.externalresource.dto.UpdateResourceWorkRequest;
+import com.tu.backend.externalresource.entity.ResourceExcerptEntity;
 import com.tu.backend.externalresource.entity.ResourceItemEntity;
 import com.tu.backend.externalresource.entity.ResourceTypeEntity;
 import com.tu.backend.externalresource.entity.ResourceWorkEntity;
+import com.tu.backend.externalresource.repository.ResourceExcerptRepository;
 import com.tu.backend.externalresource.repository.ResourceItemRepository;
 import com.tu.backend.externalresource.repository.ResourceTypeRepository;
 import com.tu.backend.externalresource.repository.ResourceWorkRepository;
@@ -29,20 +34,25 @@ import java.util.stream.Collectors;
 @Service
 public class ExternalResourceService {
 
+    private static final String BOOK_TYPE_CODE = "book";
+
     private final ResourceTypeRepository typeRepository;
     private final ResourceWorkRepository workRepository;
     private final ResourceItemRepository itemRepository;
+    private final ResourceExcerptRepository excerptRepository;
     private final ReferenceService referenceService;
 
     public ExternalResourceService(
         ResourceTypeRepository typeRepository,
         ResourceWorkRepository workRepository,
         ResourceItemRepository itemRepository,
+        ResourceExcerptRepository excerptRepository,
         ReferenceService referenceService
     ) {
         this.typeRepository = typeRepository;
         this.workRepository = workRepository;
         this.itemRepository = itemRepository;
+        this.excerptRepository = excerptRepository;
         this.referenceService = referenceService;
     }
 
@@ -178,13 +188,21 @@ public class ExternalResourceService {
         return items.stream().map(item -> toItemDto(item, types.get(item.getTypeId()), works.get(item.getWorkId()))).toList();
     }
 
+    @Transactional(readOnly = true)
+    public ResourceItemDto getItem(String id) {
+        ResourceItemEntity entity = findItem(id);
+        return toItemDto(entity, findType(entity.getTypeId()), findOptionalWork(entity.getWorkId()));
+    }
+
     @Transactional
     public ResourceItemDto createItem(CreateResourceItemRequest request) {
         ResourceTypeEntity type = findType(request.typeId());
-        ResourceWorkEntity work = findWork(request.workId());
-        ensureWorkTypeMatches(type, work);
-        String identityValue = normalizeRequired(request.identityValue(), "resource identity value required");
-        if (itemRepository.findByTypeIdAndIdentityValue(type.getId(), identityValue).isPresent()) {
+        ResourceWorkEntity work = findOptionalWork(request.workId());
+        if (work != null) {
+            ensureWorkTypeMatches(type, work);
+        }
+        String identityValue = blankToNull(request.identityValue());
+        if (identityValue != null && itemRepository.findByTypeIdAndIdentityValue(type.getId(), identityValue).isPresent()) {
             throw new BusinessException(40009, "resource item identity already exists");
         }
 
@@ -198,14 +216,18 @@ public class ExternalResourceService {
     public ResourceItemDto updateItem(String id, UpdateResourceItemRequest request) {
         ResourceItemEntity entity = findItem(id);
         ResourceTypeEntity type = findType(request.typeId());
-        ResourceWorkEntity work = findWork(request.workId());
-        ensureWorkTypeMatches(type, work);
-        String identityValue = normalizeRequired(request.identityValue(), "resource identity value required");
-        itemRepository.findByTypeIdAndIdentityValue(type.getId(), identityValue)
-            .filter(existing -> !existing.getId().equals(id))
-            .ifPresent(existing -> {
-                throw new BusinessException(40009, "resource item identity already exists");
-            });
+        ResourceWorkEntity work = findOptionalWork(request.workId());
+        if (work != null) {
+            ensureWorkTypeMatches(type, work);
+        }
+        String identityValue = blankToNull(request.identityValue());
+        if (identityValue != null) {
+            itemRepository.findByTypeIdAndIdentityValue(type.getId(), identityValue)
+                .filter(existing -> !existing.getId().equals(id))
+                .ifPresent(existing -> {
+                    throw new BusinessException(40009, "resource item identity already exists");
+                });
+        }
 
         fillItem(entity, type, work, request.title(), identityValue, request.sourceUrl(), request.edition(), request.note());
         return toItemDto(itemRepository.save(entity), type, work);
@@ -216,7 +238,52 @@ public class ExternalResourceService {
         if (referenceService.hasResourceItemReferences(id)) {
             throw new BusinessException(40009, "resource item is in use");
         }
+        excerptRepository.deleteByResourceItemId(id);
         itemRepository.delete(findItem(id));
+    }
+
+    @Transactional(readOnly = true)
+    public List<ResourceExcerptDto> listExcerpts(String resourceItemId) {
+        ResourceItemEntity item = findItem(resourceItemId);
+        ensureBookItem(item);
+        return excerptRepository.findByResourceItemIdOrderBySortOrderAscCreatedAtAsc(item.getId())
+            .stream()
+            .map(excerpt -> toExcerptDto(excerpt, item))
+            .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public ResourceExcerptDto getExcerpt(String id) {
+        ResourceExcerptEntity excerpt = findExcerpt(id);
+        ResourceItemEntity item = findItem(excerpt.getResourceItemId());
+        ensureBookItem(item);
+        return toExcerptDto(excerpt, item);
+    }
+
+    @Transactional
+    public ResourceExcerptDto createExcerpt(String resourceItemId, CreateResourceExcerptRequest request) {
+        ResourceItemEntity item = findItem(resourceItemId);
+        ensureBookItem(item);
+
+        ResourceExcerptEntity entity = new ResourceExcerptEntity();
+        entity.setId("re-" + compactUuid());
+        entity.setResourceItemId(item.getId());
+        fillExcerpt(entity, request.title(), request.locator(), request.excerptText(), request.note(), request.sortOrder(), item.getId());
+        return toExcerptDto(excerptRepository.save(entity), item);
+    }
+
+    @Transactional
+    public ResourceExcerptDto updateExcerpt(String id, UpdateResourceExcerptRequest request) {
+        ResourceExcerptEntity entity = findExcerpt(id);
+        ResourceItemEntity item = findItem(entity.getResourceItemId());
+        ensureBookItem(item);
+        fillExcerpt(entity, request.title(), request.locator(), request.excerptText(), request.note(), request.sortOrder(), item.getId());
+        return toExcerptDto(excerptRepository.save(entity), item);
+    }
+
+    @Transactional
+    public void deleteExcerpt(String id) {
+        excerptRepository.delete(findExcerpt(id));
     }
 
     private void fillItem(
@@ -230,7 +297,7 @@ public class ExternalResourceService {
         String note
     ) {
         entity.setTypeId(type.getId());
-        entity.setWorkId(work.getId());
+        entity.setWorkId(work == null ? null : work.getId());
         entity.setTitle(normalizeRequired(title, "resource item title required"));
         entity.setIdentityValue(identityValue);
         entity.setSourceUrl(blankToNull(sourceUrl));
@@ -242,6 +309,38 @@ public class ExternalResourceService {
         if (!work.getTypeId().equals(type.getId())) {
             throw new BusinessException(40000, "resource work does not belong to resource type");
         }
+    }
+
+    private void ensureBookItem(ResourceItemEntity item) {
+        ResourceTypeEntity type = findType(item.getTypeId());
+        if (!BOOK_TYPE_CODE.equals(type.getCode())) {
+            throw new BusinessException(40000, "resource excerpts are only supported for book resources");
+        }
+    }
+
+    private void fillExcerpt(
+        ResourceExcerptEntity entity,
+        String title,
+        String locator,
+        String excerptText,
+        String note,
+        Integer sortOrder,
+        String resourceItemId
+    ) {
+        entity.setTitle(normalizeRequired(title, "resource excerpt title required"));
+        entity.setLocator(blankToNull(locator));
+        entity.setExcerptText(normalizeRequired(excerptText, "resource excerpt text required"));
+        entity.setNote(blankToNull(note));
+        entity.setSortOrder(sortOrder == null ? nextExcerptSortOrder(resourceItemId) : Math.max(0, sortOrder));
+    }
+
+    private int nextExcerptSortOrder(String resourceItemId) {
+        return excerptRepository.findByResourceItemId(resourceItemId).stream()
+            .map(ResourceExcerptEntity::getSortOrder)
+            .filter(order -> order != null)
+            .max(Integer::compareTo)
+            .map(order -> order + 1)
+            .orElse(0);
     }
 
     private ResourceTypeEntity findType(String id) {
@@ -260,12 +359,24 @@ public class ExternalResourceService {
             .orElseThrow(() -> new BusinessException(40001, "resource work not found"));
     }
 
+    private ResourceWorkEntity findOptionalWork(String id) {
+        return isBlank(id) ? null : findWork(id);
+    }
+
     private ResourceItemEntity findItem(String id) {
         if (isBlank(id)) {
             throw new BusinessException(40000, "resource item id required");
         }
         return itemRepository.findById(id.trim())
             .orElseThrow(() -> new BusinessException(40001, "resource item not found"));
+    }
+
+    private ResourceExcerptEntity findExcerpt(String id) {
+        if (isBlank(id)) {
+            throw new BusinessException(40000, "resource excerpt id required");
+        }
+        return excerptRepository.findById(id.trim())
+            .orElseThrow(() -> new BusinessException(40001, "resource excerpt not found"));
     }
 
     private Map<String, ResourceTypeEntity> loadTypeMap() {
@@ -313,6 +424,19 @@ public class ExternalResourceService {
             entity.getSourceUrl(),
             entity.getEdition(),
             entity.getNote()
+        );
+    }
+
+    private ResourceExcerptDto toExcerptDto(ResourceExcerptEntity entity, ResourceItemEntity item) {
+        return new ResourceExcerptDto(
+            entity.getId(),
+            entity.getResourceItemId(),
+            item == null ? "" : item.getTitle(),
+            entity.getTitle(),
+            entity.getLocator(),
+            entity.getExcerptText(),
+            entity.getNote(),
+            entity.getSortOrder()
         );
     }
 

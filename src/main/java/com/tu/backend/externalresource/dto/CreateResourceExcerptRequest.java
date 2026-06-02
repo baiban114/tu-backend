@@ -1,0 +1,13 @@
+package com.tu.backend.externalresource.dto;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+
+public record CreateResourceExcerptRequest(
+    @NotBlank @Size(max = 255) String title,
+    @Size(max = 255) String locator,
+    @NotBlank @Size(max = 20000) String excerptText,
+    @Size(max = 1024) String note,
+    Integer sortOrder
+) {
+}

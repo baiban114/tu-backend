@@ -9,6 +9,9 @@ public record ReferenceTargetDto(
     String resourceItemId,
     String resourceItemTitle,
     String resourceTypeName,
+    String resourceExcerptId,
+    String resourceExcerptTitle,
+    String resourceExcerptLocator,
     String url
 ) {
 }

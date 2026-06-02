@@ -7,9 +7,11 @@ import com.tu.backend.common.BusinessException;
 import com.tu.backend.common.PageResponse;
 import com.tu.backend.content.entity.PageContentEntity;
 import com.tu.backend.content.repository.PageContentRepository;
+import com.tu.backend.externalresource.entity.ResourceExcerptEntity;
 import com.tu.backend.externalresource.entity.ResourceItemEntity;
 import com.tu.backend.externalresource.entity.ResourceTypeEntity;
 import com.tu.backend.externalresource.entity.ResourceWorkEntity;
+import com.tu.backend.externalresource.repository.ResourceExcerptRepository;
 import com.tu.backend.externalresource.repository.ResourceItemRepository;
 import com.tu.backend.externalresource.repository.ResourceTypeRepository;
 import com.tu.backend.externalresource.repository.ResourceWorkRepository;
@@ -21,8 +23,10 @@ import com.tu.backend.reference.dto.ReferenceSourceDto;
 import com.tu.backend.reference.dto.ReferenceTargetDto;
 import com.tu.backend.reference.dto.UpdateExternalReferenceRequest;
 import com.tu.backend.reference.entity.ExternalReferenceOccurrenceEntity;
+import com.tu.backend.reference.entity.ExternalResourceReferenceEntity;
 import com.tu.backend.reference.entity.InternalReferenceRecordEntity;
 import com.tu.backend.reference.repository.ExternalReferenceOccurrenceRepository;
+import com.tu.backend.reference.repository.ExternalResourceReferenceRepository;
 import com.tu.backend.reference.repository.InternalReferenceRecordRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,9 +56,11 @@ public class ReferenceService {
 
     private final InternalReferenceRecordRepository internalReferenceRepository;
     private final ExternalReferenceOccurrenceRepository externalReferenceRepository;
+    private final ExternalResourceReferenceRepository externalResourceReferenceRepository;
     private final PageRepository pageRepository;
     private final PageContentRepository pageContentRepository;
     private final ResourceItemRepository resourceItemRepository;
+    private final ResourceExcerptRepository resourceExcerptRepository;
     private final ResourceTypeRepository resourceTypeRepository;
     private final ResourceWorkRepository resourceWorkRepository;
     private final ObjectMapper objectMapper;
@@ -62,18 +68,22 @@ public class ReferenceService {
     public ReferenceService(
         InternalReferenceRecordRepository internalReferenceRepository,
         ExternalReferenceOccurrenceRepository externalReferenceRepository,
+        ExternalResourceReferenceRepository externalResourceReferenceRepository,
         PageRepository pageRepository,
         PageContentRepository pageContentRepository,
         ResourceItemRepository resourceItemRepository,
+        ResourceExcerptRepository resourceExcerptRepository,
         ResourceTypeRepository resourceTypeRepository,
         ResourceWorkRepository resourceWorkRepository,
         ObjectMapper objectMapper
     ) {
         this.internalReferenceRepository = internalReferenceRepository;
         this.externalReferenceRepository = externalReferenceRepository;
+        this.externalResourceReferenceRepository = externalResourceReferenceRepository;
         this.pageRepository = pageRepository;
         this.pageContentRepository = pageContentRepository;
         this.resourceItemRepository = resourceItemRepository;
+        this.resourceExcerptRepository = resourceExcerptRepository;
         this.resourceTypeRepository = resourceTypeRepository;
         this.resourceWorkRepository = resourceWorkRepository;
         this.objectMapper = objectMapper;
@@ -101,6 +111,7 @@ public class ReferenceService {
         Map<String, PageEntity> pageMap = loadPageMap();
         Map<String, PageContentContext> pageContentMap = loadPageContentContextMap();
         Map<String, ResourceItemEntity> resourceItemMap = loadResourceItemMap();
+        Map<String, ResourceExcerptEntity> resourceExcerptMap = loadResourceExcerptMap();
         Map<String, ResourceWorkEntity> resourceWorkMap = loadResourceWorkMap();
         Map<String, ResourceTypeEntity> resourceTypeMap = loadResourceTypeMap();
 
@@ -120,6 +131,20 @@ public class ReferenceService {
         if (includeExternal) {
             externalReferenceRepository.findAllByOrderByUpdatedAtDescCreatedAtDesc().forEach(entity -> {
                 ReferenceItemDto dto = toExternalDto(entity, pageMap, pageContentMap, resourceItemMap, resourceWorkMap, resourceTypeMap);
+                if (matches(dto, normalizedPageId, normalizedResourceItemId, normalizedStatus, normalizedQuery)) {
+                    allItems.add(dto);
+                }
+            });
+            externalResourceReferenceRepository.findAllByOrderByUpdatedAtDescCreatedAtDesc().forEach(entity -> {
+                ReferenceItemDto dto = toExternalResourceDto(
+                    entity,
+                    pageMap,
+                    pageContentMap,
+                    resourceItemMap,
+                    resourceExcerptMap,
+                    resourceWorkMap,
+                    resourceTypeMap
+                );
                 if (matches(dto, normalizedPageId, normalizedResourceItemId, normalizedStatus, normalizedQuery)) {
                     allItems.add(dto);
                 }
@@ -189,6 +214,7 @@ public class ReferenceService {
     public void rebuildAll() {
         internalReferenceRepository.deleteAllInBatch();
         externalReferenceRepository.deleteAllInBatch();
+        externalResourceReferenceRepository.deleteAllInBatch();
         pageContentRepository.findAll().forEach(content -> rebuildPageReferences(content.getPageId(), content.getBlocksJson()));
     }
 
@@ -199,15 +225,30 @@ public class ReferenceService {
         externalReferenceRepository.findByPageIdInOrderByUpdatedAtDescCreatedAtDesc(List.of(pageId)).forEach(entity -> {
             existingExternalMap.put(ExternalReferenceKey.from(entity), entity);
         });
+        Map<ExternalResourceReferenceKey, ExternalResourceReferenceEntity> existingResourceMap = new LinkedHashMap<>();
+        externalResourceReferenceRepository.findByPageIdInOrderByUpdatedAtDescCreatedAtDesc(List.of(pageId)).forEach(entity -> {
+            existingResourceMap.put(ExternalResourceReferenceKey.from(entity), entity);
+        });
 
         internalReferenceRepository.deleteByPageId(pageId);
         externalReferenceRepository.deleteByPageId(pageId);
+        externalResourceReferenceRepository.deleteByPageId(pageId);
 
         List<InternalReferenceRecordEntity> internalRecords = new ArrayList<>();
         List<ExternalReferenceOccurrenceEntity> externalRecords = new ArrayList<>();
+        List<ExternalResourceReferenceEntity> externalResourceRecords = new ArrayList<>();
         int rootIndex = 0;
         for (JsonNode block : blocks) {
-            collectBlockReferences(pageId, block, "blocks[" + rootIndex + "]", internalRecords, externalRecords, existingExternalMap);
+            collectBlockReferences(
+                pageId,
+                block,
+                "blocks[" + rootIndex + "]",
+                internalRecords,
+                externalRecords,
+                externalResourceRecords,
+                existingExternalMap,
+                existingResourceMap
+            );
             rootIndex += 1;
         }
 
@@ -216,6 +257,9 @@ public class ReferenceService {
         }
         if (!externalRecords.isEmpty()) {
             externalReferenceRepository.saveAll(externalRecords);
+        }
+        if (!externalResourceRecords.isEmpty()) {
+            externalResourceReferenceRepository.saveAll(externalResourceRecords);
         }
     }
 
@@ -226,11 +270,15 @@ public class ReferenceService {
         }
         internalReferenceRepository.deleteByPageIdIn(pageIds);
         externalReferenceRepository.deleteByPageIdIn(pageIds);
+        externalResourceReferenceRepository.deleteByPageIdIn(pageIds);
     }
 
     @Transactional(readOnly = true)
     public boolean shouldRunBootstrapRebuild() {
-        return internalReferenceRepository.count() == 0 && externalReferenceRepository.count() == 0 && pageContentRepository.count() > 0;
+        return internalReferenceRepository.count() == 0
+            && externalReferenceRepository.count() == 0
+            && externalResourceReferenceRepository.count() == 0
+            && pageContentRepository.count() > 0;
     }
 
     @Transactional(readOnly = true)
@@ -244,7 +292,9 @@ public class ReferenceService {
         String blockPath,
         List<InternalReferenceRecordEntity> internalRecords,
         List<ExternalReferenceOccurrenceEntity> externalRecords,
-        Map<ExternalReferenceKey, ExternalReferenceOccurrenceEntity> existingExternalMap
+        List<ExternalResourceReferenceEntity> externalResourceRecords,
+        Map<ExternalReferenceKey, ExternalReferenceOccurrenceEntity> existingExternalMap,
+        Map<ExternalResourceReferenceKey, ExternalResourceReferenceEntity> existingResourceMap
     ) {
         if (!block.isObject()) {
             return;
@@ -278,6 +328,15 @@ public class ReferenceService {
             }
         }
 
+        extractExternalResourceReference(
+            pageId,
+            blockId,
+            blockType,
+            blockPath,
+            block,
+            externalResourceRecords,
+            existingResourceMap
+        );
         extractExternalReferences(pageId, blockId, blockType, blockPath, text(block.get("content")), externalRecords, existingExternalMap);
         extractTableReferences(pageId, blockId, blockType, blockPath, block.get("tableData"), externalRecords, existingExternalMap);
         extractGraphReferences(pageId, blockId, blockType, blockPath, block.get("graphData"), internalRecords, externalRecords, existingExternalMap);
@@ -286,10 +345,57 @@ public class ReferenceService {
         if (childrenNode instanceof ArrayNode children) {
             int index = 0;
             for (JsonNode child : children) {
-                collectBlockReferences(pageId, child, blockPath + ".children[" + index + "]", internalRecords, externalRecords, existingExternalMap);
+                collectBlockReferences(
+                    pageId,
+                    child,
+                    blockPath + ".children[" + index + "]",
+                    internalRecords,
+                    externalRecords,
+                    externalResourceRecords,
+                    existingExternalMap,
+                    existingResourceMap
+                );
                 index += 1;
             }
         }
+    }
+
+    private void extractExternalResourceReference(
+        String pageId,
+        String blockId,
+        String blockType,
+        String blockPath,
+        JsonNode block,
+        List<ExternalResourceReferenceEntity> externalResourceRecords,
+        Map<ExternalResourceReferenceKey, ExternalResourceReferenceEntity> existingResourceMap
+    ) {
+        if (!"externalResource".equals(blockType)) {
+            return;
+        }
+        JsonNode data = block.get("externalResource");
+        if (data == null || data.isNull()) {
+            data = block.path("metadata").path("externalResource");
+        }
+        if (data == null || data.isMissingNode() || !data.isObject()) {
+            return;
+        }
+
+        String resourceItemId = text(data.get("resourceItemId"));
+        if (resourceItemId.isBlank()) {
+            return;
+        }
+        String sourceLocator = blockPath + ".externalResource";
+        ExternalResourceReferenceKey key = new ExternalResourceReferenceKey(pageId, blockId, blockType, sourceLocator);
+        ExternalResourceReferenceEntity existing = existingResourceMap.get(key);
+        ExternalResourceReferenceEntity entity = new ExternalResourceReferenceEntity();
+        entity.setId(existing == null ? newId("err") : existing.getId());
+        entity.setPageId(pageId);
+        entity.setBlockId(blockId);
+        entity.setSourceKind(blockType);
+        entity.setSourceLocator(sourceLocator);
+        entity.setResourceItemId(resourceItemId);
+        entity.setResourceExcerptId(blankToNull(text(data.get("resourceExcerptId"))));
+        externalResourceRecords.add(entity);
     }
 
     private void extractGraphReferences(
@@ -549,6 +655,9 @@ public class ReferenceService {
                 null,
                 null,
                 null,
+                null,
+                null,
+                null,
                 null
             ),
             status,
@@ -601,6 +710,9 @@ public class ReferenceService {
                 entity.getResourceItemId(),
                 resourceItem == null ? null : resourceItem.getTitle(),
                 resourceType == null ? null : resourceType.getName(),
+                null,
+                null,
+                null,
                 entity.getUrl()
             ),
             status,
@@ -608,6 +720,70 @@ public class ReferenceService {
                 entity.getDisplayText(),
                 entity.getCitationLocator(),
                 entity.getCitationNote()
+            )
+        );
+    }
+
+    private ReferenceItemDto toExternalResourceDto(
+        ExternalResourceReferenceEntity entity,
+        Map<String, PageEntity> pageMap,
+        Map<String, PageContentContext> pageContentMap,
+        Map<String, ResourceItemEntity> resourceItemMap,
+        Map<String, ResourceExcerptEntity> resourceExcerptMap,
+        Map<String, ResourceWorkEntity> resourceWorkMap,
+        Map<String, ResourceTypeEntity> resourceTypeMap
+    ) {
+        PageEntity sourcePage = pageMap.get(entity.getPageId());
+        PageBlockContext sourceBlock = pageContentMap.values().stream()
+            .flatMap(context -> context.blocks().stream())
+            .filter(block -> block.id().equals(entity.getBlockId()))
+            .findFirst()
+            .orElse(null);
+        ResourceItemEntity resourceItem = resourceItemMap.get(entity.getResourceItemId());
+        ResourceExcerptEntity excerpt = entity.getResourceExcerptId() == null ? null : resourceExcerptMap.get(entity.getResourceExcerptId());
+        ResourceWorkEntity resourceWork = resourceItem == null ? null : resourceWorkMap.get(resourceItem.getWorkId());
+        ResourceTypeEntity resourceType = resourceItem == null ? null : resourceTypeMap.get(resourceItem.getTypeId());
+        JsonNode snapshot = sourceBlock == null ? null : sourceBlock.node().path("externalResource").path("snapshot");
+
+        String resourceTitle = resourceItem == null ? text(snapshot == null ? null : snapshot.get("resourceTitle")) : resourceItem.getTitle();
+        String resourceTypeName = resourceType == null ? text(snapshot == null ? null : snapshot.get("resourceTypeName")) : resourceType.getName();
+        String excerptTitle = excerpt == null ? text(snapshot == null ? null : snapshot.get("excerptTitle")) : excerpt.getTitle();
+        String excerptLocator = excerpt == null ? text(snapshot == null ? null : snapshot.get("excerptLocator")) : excerpt.getLocator();
+        String excerptNote = excerpt == null ? text(snapshot == null ? null : snapshot.get("excerptNote")) : excerpt.getNote();
+        String url = resourceItem == null ? text(snapshot == null ? null : snapshot.get("sourceUrl")) : resourceItem.getSourceUrl();
+        String status = resourceItem == null || (entity.getResourceExcerptId() != null && excerpt == null) ? "broken" : "bound";
+
+        return new ReferenceItemDto(
+            entity.getId(),
+            "external",
+            false,
+            new ReferenceSourceDto(
+                entity.getPageId(),
+                sourcePage == null ? entity.getPageId() : sourcePage.getTitle(),
+                entity.getBlockId(),
+                sourceBlock == null ? entity.getSourceKind() : sourceBlock.type(),
+                entity.getSourceKind(),
+                entity.getSourceLocator()
+            ),
+            new ReferenceTargetDto(
+                entity.getResourceExcerptId() == null ? "resource" : "resource_excerpt",
+                null,
+                null,
+                null,
+                null,
+                entity.getResourceItemId(),
+                resourceTitle.isBlank() ? null : resourceTitle,
+                resourceTypeName.isBlank() ? null : resourceTypeName,
+                entity.getResourceExcerptId(),
+                excerptTitle.isBlank() ? null : excerptTitle,
+                excerptLocator.isBlank() ? null : excerptLocator,
+                url.isBlank() ? null : url
+            ),
+            status,
+            new ReferenceCitationDto(
+                excerptTitle.isBlank() ? resourceTitle : excerptTitle,
+                excerptLocator.isBlank() ? null : excerptLocator,
+                excerptNote.isBlank() ? null : excerptNote
             )
         );
     }
@@ -664,6 +840,9 @@ public class ReferenceService {
                 null,
                 note.isBlank() ? "(无备注)" : note,
                 null,
+                null,
+                null,
+                null,
                 null
             ),
             "ok",
@@ -702,6 +881,8 @@ public class ReferenceService {
             safe(dto.target().blockId()),
             safe(dto.target().resourceItemTitle()),
             safe(dto.target().resourceTypeName()),
+            safe(dto.target().resourceExcerptTitle()),
+            safe(dto.target().resourceExcerptLocator()),
             safe(dto.target().url()),
             safe(dto.citation().displayText()),
             safe(dto.citation().locator()),
@@ -819,6 +1000,12 @@ public class ReferenceService {
     private Map<String, ResourceItemEntity> loadResourceItemMap() {
         Map<String, ResourceItemEntity> map = new HashMap<>();
         resourceItemRepository.findAll().forEach(item -> map.put(item.getId(), item));
+        return map;
+    }
+
+    private Map<String, ResourceExcerptEntity> loadResourceExcerptMap() {
+        Map<String, ResourceExcerptEntity> map = new HashMap<>();
+        resourceExcerptRepository.findAll().forEach(excerpt -> map.put(excerpt.getId(), excerpt));
         return map;
     }
 
@@ -961,6 +1148,22 @@ public class ReferenceService {
                 entity.getSourceLocator(),
                 entity.getOccurrenceIndex(),
                 entity.getUrl()
+            );
+        }
+    }
+
+    private record ExternalResourceReferenceKey(
+        String pageId,
+        String blockId,
+        String sourceKind,
+        String sourceLocator
+    ) {
+        static ExternalResourceReferenceKey from(ExternalResourceReferenceEntity entity) {
+            return new ExternalResourceReferenceKey(
+                entity.getPageId(),
+                entity.getBlockId(),
+                entity.getSourceKind(),
+                entity.getSourceLocator()
             );
         }
     }

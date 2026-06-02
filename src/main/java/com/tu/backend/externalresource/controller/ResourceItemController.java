@@ -1,7 +1,9 @@
 package com.tu.backend.externalresource.controller;
 
 import com.tu.backend.common.ApiResponse;
+import com.tu.backend.externalresource.dto.CreateResourceExcerptRequest;
 import com.tu.backend.externalresource.dto.CreateResourceItemRequest;
+import com.tu.backend.externalresource.dto.ResourceExcerptDto;
 import com.tu.backend.externalresource.dto.ResourceItemDto;
 import com.tu.backend.externalresource.dto.UpdateResourceItemRequest;
 import com.tu.backend.externalresource.service.ExternalResourceService;
@@ -37,9 +39,27 @@ public class ResourceItemController {
         return ApiResponse.success(externalResourceService.listItems(typeId, workId, identityValue));
     }
 
+    @GetMapping("/{id}")
+    public ApiResponse<ResourceItemDto> get(@PathVariable String id) {
+        return ApiResponse.success(externalResourceService.getItem(id));
+    }
+
     @PostMapping
     public ApiResponse<ResourceItemDto> create(@Valid @RequestBody CreateResourceItemRequest request) {
         return ApiResponse.success(externalResourceService.createItem(request));
+    }
+
+    @GetMapping("/{id}/excerpts")
+    public ApiResponse<List<ResourceExcerptDto>> listExcerpts(@PathVariable String id) {
+        return ApiResponse.success(externalResourceService.listExcerpts(id));
+    }
+
+    @PostMapping("/{id}/excerpts")
+    public ApiResponse<ResourceExcerptDto> createExcerpt(
+        @PathVariable String id,
+        @Valid @RequestBody CreateResourceExcerptRequest request
+    ) {
+        return ApiResponse.success(externalResourceService.createExcerpt(id, request));
     }
 
     @PatchMapping("/{id}")

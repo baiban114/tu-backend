@@ -15,4 +15,6 @@ public interface ResourceTypeRepository extends JpaRepository<ResourceTypeEntity
     boolean existsByName(String name);
 
     Optional<ResourceTypeEntity> findByCode(String code);
+
+    Optional<ResourceTypeEntity> findByName(String name);
 }
