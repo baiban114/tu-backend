@@ -772,18 +772,18 @@ public class ReferenceService {
                 null,
                 null,
                 entity.getResourceItemId(),
-                resourceTitle.isBlank() ? null : resourceTitle,
-                resourceTypeName.isBlank() ? null : resourceTypeName,
+                blankToNull(resourceTitle),
+                blankToNull(resourceTypeName),
                 entity.getResourceExcerptId(),
-                excerptTitle.isBlank() ? null : excerptTitle,
-                excerptLocator.isBlank() ? null : excerptLocator,
-                url.isBlank() ? null : url
+                blankToNull(excerptTitle),
+                blankToNull(excerptLocator),
+                blankToNull(url)
             ),
             status,
             new ReferenceCitationDto(
-                excerptTitle.isBlank() ? resourceTitle : excerptTitle,
-                excerptLocator.isBlank() ? null : excerptLocator,
-                excerptNote.isBlank() ? null : excerptNote
+                blankToNull(excerptTitle) != null ? excerptTitle : blankToNull(resourceTitle),
+                blankToNull(excerptLocator),
+                blankToNull(excerptNote)
             )
         );
     }

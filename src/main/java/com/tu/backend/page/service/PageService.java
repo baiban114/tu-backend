@@ -1,5 +1,6 @@
 package com.tu.backend.page.service;
 
+import com.tu.backend.annotation.service.OrphanedAnnotationService;
 import com.tu.backend.common.BusinessException;
 import com.tu.backend.content.service.PageContentService;
 import com.tu.backend.knowledge.repository.KnowledgeBaseRepository;
@@ -9,6 +10,8 @@ import com.tu.backend.page.dto.UpdatePageRequest;
 import com.tu.backend.page.entity.PageEntity;
 import com.tu.backend.page.repository.PageRepository;
 import com.tu.backend.rag.RagIndexService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,21 +27,26 @@ import java.util.UUID;
 @Service
 public class PageService {
 
+    private static final Logger log = LoggerFactory.getLogger(PageService.class);
+
     private final PageRepository pageRepository;
     private final KnowledgeBaseRepository knowledgeBaseRepository;
     private final PageContentService pageContentService;
     private final RagIndexService ragIndexService;
+    private final OrphanedAnnotationService orphanedAnnotationService;
 
     public PageService(
         PageRepository pageRepository,
         KnowledgeBaseRepository knowledgeBaseRepository,
         PageContentService pageContentService,
-        RagIndexService ragIndexService
+        RagIndexService ragIndexService,
+        OrphanedAnnotationService orphanedAnnotationService
     ) {
         this.pageRepository = pageRepository;
         this.knowledgeBaseRepository = knowledgeBaseRepository;
         this.pageContentService = pageContentService;
         this.ragIndexService = ragIndexService;
+        this.orphanedAnnotationService = orphanedAnnotationService;
     }
 
     @Transactional(readOnly = true)
@@ -118,6 +126,10 @@ public class PageService {
             }
         }
 
+        int orphaned = orphanedAnnotationService.orphanAnnotationsForPages(idsToDelete);
+        if (orphaned > 0) {
+            log.info("Orphaned {} annotations before deleting {} pages", orphaned, idsToDelete.size());
+        }
         pageContentService.deleteByPageIds(idsToDelete);
         pageRepository.deleteAllById(idsToDelete);
         ragIndexService.deletePagesBestEffort(root.getKbId(), idsToDelete);
@@ -128,6 +140,10 @@ public class PageService {
             .stream()
             .map(PageEntity::getId)
             .toList();
+        int orphaned = orphanedAnnotationService.orphanAnnotationsForPages(pageIds);
+        if (orphaned > 0) {
+            log.info("Orphaned {} annotations before deleting KB {} ({} pages)", orphaned, kbId, pageIds.size());
+        }
         pageContentService.deleteByPageIds(pageIds);
         pageRepository.deleteByKbId(kbId);
         ragIndexService.deleteKnowledgeBaseBestEffort(kbId);
