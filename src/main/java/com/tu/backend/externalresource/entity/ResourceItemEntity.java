@@ -44,6 +44,15 @@ public class ResourceItemEntity {
     @Column(length = 1024)
     private String note;
 
+    @Column(name = "title_source", length = 16, nullable = false)
+    private String titleSource = "auto";
+
+    @Column(name = "work_id_source", length = 16, nullable = false)
+    private String workIdSource = "auto";
+
+    @Column(name = "variant_kind", length = 32)
+    private String variantKind;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -124,6 +133,30 @@ public class ResourceItemEntity {
 
     public void setNote(String note) {
         this.note = note;
+    }
+
+    public String getTitleSource() {
+        return titleSource;
+    }
+
+    public void setTitleSource(String titleSource) {
+        this.titleSource = titleSource;
+    }
+
+    public String getWorkIdSource() {
+        return workIdSource;
+    }
+
+    public void setWorkIdSource(String workIdSource) {
+        this.workIdSource = workIdSource;
+    }
+
+    public String getVariantKind() {
+        return variantKind;
+    }
+
+    public void setVariantKind(String variantKind) {
+        this.variantKind = variantKind;
     }
 
     public LocalDateTime getCreatedAt() {

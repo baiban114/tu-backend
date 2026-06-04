@@ -14,5 +14,7 @@ public interface ResourceWorkRepository extends JpaRepository<ResourceWorkEntity
 
     Optional<ResourceWorkEntity> findByTypeIdAndTitle(String typeId, String title);
 
+    Optional<ResourceWorkEntity> findByTypeIdAndClusterKey(String typeId, String clusterKey);
+
     boolean existsByTypeId(String typeId);
 }

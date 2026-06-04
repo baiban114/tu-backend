@@ -11,6 +11,7 @@ import com.tu.backend.externalresource.entity.ResourceExcerptEntity;
 import com.tu.backend.externalresource.entity.ResourceItemEntity;
 import com.tu.backend.externalresource.entity.ResourceTypeEntity;
 import com.tu.backend.externalresource.entity.ResourceWorkEntity;
+import com.tu.backend.externalresource.util.ExternalUrlNormalizer;
 import com.tu.backend.externalresource.repository.ResourceExcerptRepository;
 import com.tu.backend.externalresource.repository.ResourceItemRepository;
 import com.tu.backend.externalresource.repository.ResourceTypeRepository;
@@ -916,17 +917,32 @@ public class ReferenceService {
         item.setTypeId(type.getId());
         item.setWorkId(work.getId());
         item.setTitle(title);
-        item.setIdentityValue(url);
-        item.setSourceUrl(url);
+        String baseUrl = ExternalUrlNormalizer.toBasePageUrl(url);
+        String identity = baseUrl == null ? url : baseUrl;
+        item.setIdentityValue(identity);
+        item.setSourceUrl(identity);
         item.setNote("Auto-created from saved external reference");
         return resourceItemRepository.save(item).getId();
     }
 
     private String resolveResourceItemIdByUrl(String url) {
-        return resourceTypeRepository.findAll().stream()
+        ResourceTypeEntity linkType = resourceTypeRepository.findAll().stream()
             .filter(type -> LINK_RESOURCE_TYPE_CODE.equals(type.getCode()))
             .findFirst()
-            .flatMap(type -> resourceItemRepository.findByTypeIdAndIdentityValue(type.getId(), url))
+            .orElse(null);
+        if (linkType == null) {
+            return null;
+        }
+        String typeId = linkType.getId();
+        ExternalUrlNormalizer.ParsedExternalUrl parsed = ExternalUrlNormalizer.parse(url);
+        if (parsed != null) {
+            return resourceItemRepository.findByTypeIdAndIdentityValue(typeId, parsed.baseUrl())
+                .map(ResourceItemEntity::getId)
+                .orElseGet(() -> resourceItemRepository.findByTypeIdAndIdentityValue(typeId, parsed.href())
+                    .map(ResourceItemEntity::getId)
+                    .orElse(null));
+        }
+        return resourceItemRepository.findByTypeIdAndIdentityValue(typeId, url)
             .map(ResourceItemEntity::getId)
             .orElse(null);
     }

@@ -29,6 +29,12 @@ public class ResourceWorkEntity {
     @Column(length = 1024)
     private String description;
 
+    @Column(name = "cluster_key", length = 512)
+    private String clusterKey;
+
+    @Column(name = "title_source", length = 16, nullable = false)
+    private String titleSource = "auto";
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -85,6 +91,22 @@ public class ResourceWorkEntity {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public String getClusterKey() {
+        return clusterKey;
+    }
+
+    public void setClusterKey(String clusterKey) {
+        this.clusterKey = clusterKey;
+    }
+
+    public String getTitleSource() {
+        return titleSource;
+    }
+
+    public void setTitleSource(String titleSource) {
+        this.titleSource = titleSource;
     }
 
     public LocalDateTime getCreatedAt() {

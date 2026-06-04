@@ -12,6 +12,9 @@ public record ResourceItemDto(
     String identityValue,
     String sourceUrl,
     String edition,
-    String note
+    String note,
+    String titleSource,
+    String workIdSource,
+    String variantKind
 ) {
 }

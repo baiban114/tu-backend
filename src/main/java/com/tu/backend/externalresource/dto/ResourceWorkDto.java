@@ -6,6 +6,8 @@ public record ResourceWorkDto(
     String typeName,
     String title,
     String subtitle,
-    String description
+    String description,
+    String clusterKey,
+    String titleSource
 ) {
 }

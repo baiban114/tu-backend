@@ -3,10 +3,13 @@ package com.tu.backend.externalresource.controller;
 import com.tu.backend.common.ApiResponse;
 import com.tu.backend.externalresource.dto.CreateResourceExcerptRequest;
 import com.tu.backend.externalresource.dto.CreateResourceItemRequest;
+import com.tu.backend.externalresource.dto.RegisterResourceUrlRequest;
+import com.tu.backend.externalresource.dto.RegisterResourceUrlResult;
 import com.tu.backend.externalresource.dto.ResourceExcerptDto;
 import com.tu.backend.externalresource.dto.ResourceItemDto;
 import com.tu.backend.externalresource.dto.UpdateResourceItemRequest;
 import com.tu.backend.externalresource.service.ExternalResourceService;
+import com.tu.backend.externalresource.service.WebLinkRegistrationService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,9 +28,26 @@ import java.util.List;
 public class ResourceItemController {
 
     private final ExternalResourceService externalResourceService;
+    private final WebLinkRegistrationService webLinkRegistrationService;
 
-    public ResourceItemController(ExternalResourceService externalResourceService) {
+    public ResourceItemController(
+        ExternalResourceService externalResourceService,
+        WebLinkRegistrationService webLinkRegistrationService
+    ) {
         this.externalResourceService = externalResourceService;
+        this.webLinkRegistrationService = webLinkRegistrationService;
+    }
+
+    @PostMapping("/register-from-url")
+    public ApiResponse<RegisterResourceUrlResult> registerFromUrl(@Valid @RequestBody RegisterResourceUrlRequest request) {
+        return ApiResponse.success(webLinkRegistrationService.registerFromUrl(request));
+    }
+
+    @GetMapping("/fetch-page-title")
+    public ApiResponse<String> fetchPageTitle(@RequestParam String url) {
+        return ApiResponse.success(
+            webLinkRegistrationService.fetchPageTitle(url).orElse(null)
+        );
     }
 
     @GetMapping
@@ -68,6 +88,16 @@ public class ResourceItemController {
         @Valid @RequestBody UpdateResourceItemRequest request
     ) {
         return ApiResponse.success(externalResourceService.updateItem(id, request));
+    }
+
+    @PostMapping("/{id}/split-work")
+    public ApiResponse<ResourceItemDto> splitToNewWork(@PathVariable String id) {
+        return ApiResponse.success(externalResourceService.splitItemToNewWork(id));
+    }
+
+    @PostMapping("/{id}/reset-auto")
+    public ApiResponse<ResourceItemDto> resetAuto(@PathVariable String id) {
+        return ApiResponse.success(externalResourceService.resetItemAutoFields(id));
     }
 
     @DeleteMapping("/{id}")

@@ -2,6 +2,7 @@ package com.tu.backend.externalresource.controller;
 
 import com.tu.backend.common.ApiResponse;
 import com.tu.backend.externalresource.dto.CreateResourceWorkRequest;
+import com.tu.backend.externalresource.dto.MergeResourceWorksRequest;
 import com.tu.backend.externalresource.dto.ResourceWorkDto;
 import com.tu.backend.externalresource.dto.UpdateResourceWorkRequest;
 import com.tu.backend.externalresource.service.ExternalResourceService;
@@ -36,6 +37,11 @@ public class ResourceWorkController {
     @PostMapping
     public ApiResponse<ResourceWorkDto> create(@Valid @RequestBody CreateResourceWorkRequest request) {
         return ApiResponse.success(externalResourceService.createWork(request));
+    }
+
+    @PostMapping("/merge")
+    public ApiResponse<ResourceWorkDto> merge(@Valid @RequestBody MergeResourceWorksRequest request) {
+        return ApiResponse.success(externalResourceService.mergeWorks(request));
     }
 
     @PatchMapping("/{id}")

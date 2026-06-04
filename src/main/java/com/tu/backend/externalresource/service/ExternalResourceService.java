@@ -1,12 +1,15 @@
 package com.tu.backend.externalresource.service;
 
 import com.tu.backend.common.BusinessException;
+import com.tu.backend.externalresource.dto.CreateResourceItemRelationRequest;
 import com.tu.backend.externalresource.dto.CreateResourceItemRequest;
 import com.tu.backend.externalresource.dto.CreateResourceExcerptRequest;
 import com.tu.backend.externalresource.dto.CreateResourceTypeRequest;
 import com.tu.backend.externalresource.dto.CreateResourceWorkRequest;
+import com.tu.backend.externalresource.dto.MergeResourceWorksRequest;
 import com.tu.backend.externalresource.dto.ResourceExcerptDto;
 import com.tu.backend.externalresource.dto.ResourceItemDto;
+import com.tu.backend.externalresource.dto.ResourceItemRelationDto;
 import com.tu.backend.externalresource.dto.ResourceTypeDto;
 import com.tu.backend.externalresource.dto.ResourceWorkDto;
 import com.tu.backend.externalresource.dto.UpdateResourceExcerptRequest;
@@ -15,17 +18,23 @@ import com.tu.backend.externalresource.dto.UpdateResourceTypeRequest;
 import com.tu.backend.externalresource.dto.UpdateResourceWorkRequest;
 import com.tu.backend.externalresource.entity.ResourceExcerptEntity;
 import com.tu.backend.externalresource.entity.ResourceItemEntity;
+import com.tu.backend.externalresource.entity.ResourceItemRelationEntity;
 import com.tu.backend.externalresource.entity.ResourceTypeEntity;
 import com.tu.backend.externalresource.entity.ResourceWorkEntity;
+import com.tu.backend.externalresource.model.FieldSource;
+import com.tu.backend.externalresource.model.VariantKind;
 import com.tu.backend.externalresource.repository.ResourceExcerptRepository;
+import com.tu.backend.externalresource.repository.ResourceItemRelationRepository;
 import com.tu.backend.externalresource.repository.ResourceItemRepository;
 import com.tu.backend.externalresource.repository.ResourceTypeRepository;
 import com.tu.backend.externalresource.repository.ResourceWorkRepository;
+import com.tu.backend.externalresource.util.ExternalUrlNormalizer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -40,17 +49,23 @@ public class ExternalResourceService {
     private final ResourceWorkRepository workRepository;
     private final ResourceItemRepository itemRepository;
     private final ResourceExcerptRepository excerptRepository;
+    private final ResourceItemRelationRepository itemRelationRepository;
+    private final UrlClusterMatcherService clusterMatcherService;
 
     public ExternalResourceService(
         ResourceTypeRepository typeRepository,
         ResourceWorkRepository workRepository,
         ResourceItemRepository itemRepository,
-        ResourceExcerptRepository excerptRepository
+        ResourceExcerptRepository excerptRepository,
+        ResourceItemRelationRepository itemRelationRepository,
+        UrlClusterMatcherService clusterMatcherService
     ) {
         this.typeRepository = typeRepository;
         this.workRepository = workRepository;
         this.itemRepository = itemRepository;
         this.excerptRepository = excerptRepository;
+        this.itemRelationRepository = itemRelationRepository;
+        this.clusterMatcherService = clusterMatcherService;
     }
 
     @Transactional(readOnly = true)
@@ -132,6 +147,8 @@ public class ExternalResourceService {
         entity.setTitle(normalizeRequired(request.title(), "resource work title required"));
         entity.setSubtitle(blankToNull(request.subtitle()));
         entity.setDescription(blankToNull(request.description()));
+        entity.setClusterKey(blankToNull(request.clusterKey()));
+        entity.setTitleSource(FieldSource.orAuto(request.titleSource()));
         return toWorkDto(workRepository.save(entity), type);
     }
 
@@ -146,7 +163,76 @@ public class ExternalResourceService {
         entity.setTitle(normalizeRequired(request.title(), "resource work title required"));
         entity.setSubtitle(blankToNull(request.subtitle()));
         entity.setDescription(blankToNull(request.description()));
+        if (request.clusterKey() != null) {
+            entity.setClusterKey(blankToNull(request.clusterKey()));
+        }
+        if (request.titleSource() != null) {
+            entity.setTitleSource(FieldSource.orAuto(request.titleSource()));
+        }
         return toWorkDto(workRepository.save(entity), type);
+    }
+
+    @Transactional
+    public ResourceWorkDto mergeWorks(MergeResourceWorksRequest request) {
+        if (request.sourceWorkId().equals(request.targetWorkId())) {
+            throw new BusinessException(40000, "cannot merge a work into itself");
+        }
+        ResourceWorkEntity source = findWork(request.sourceWorkId());
+        ResourceWorkEntity target = findWork(request.targetWorkId());
+        if (!source.getTypeId().equals(target.getTypeId())) {
+            throw new BusinessException(40000, "resource works must share the same type");
+        }
+        List<ResourceItemEntity> items = itemRepository.findByWorkIdOrderByUpdatedAtDescCreatedAtDesc(source.getId());
+        for (ResourceItemEntity item : items) {
+            item.setWorkId(target.getId());
+            item.setWorkIdSource(FieldSource.MANUAL);
+            itemRepository.save(item);
+        }
+        workRepository.delete(source);
+        return toWorkDto(target, findType(target.getTypeId()));
+    }
+
+    @Transactional
+    public ResourceItemDto splitItemToNewWork(String itemId) {
+        ResourceItemEntity item = findItem(itemId);
+        ResourceTypeEntity type = findType(item.getTypeId());
+        ResourceWorkEntity work = new ResourceWorkEntity();
+        work.setId("rw-" + compactUuid());
+        work.setTypeId(type.getId());
+        work.setTitle(item.getTitle());
+        work.setTitleSource(FieldSource.MANUAL);
+        work.setClusterKey("single|" + blankToNull(item.getIdentityValue()));
+        work.setDescription("由资源实体拆分创建");
+        work = workRepository.save(work);
+        item.setWorkId(work.getId());
+        item.setWorkIdSource(FieldSource.MANUAL);
+        return toItemDto(itemRepository.save(item), type, work);
+    }
+
+    @Transactional
+    public ResourceItemDto resetItemAutoFields(String itemId) {
+        ResourceItemEntity item = findItem(itemId);
+        ResourceTypeEntity type = findType(item.getTypeId());
+        item.setTitleSource(FieldSource.AUTO);
+        item.setWorkIdSource(FieldSource.AUTO);
+
+        String identity = blankToNull(item.getIdentityValue());
+        if (identity != null && WEB_LINK_TYPE_CODE.equals(type.getCode())) {
+            String baseUrl = ExternalUrlNormalizer.toBasePageUrl(identity);
+            if (baseUrl != null) {
+                identity = baseUrl;
+                item.setIdentityValue(baseUrl);
+                item.setSourceUrl(baseUrl);
+            }
+            Optional<UrlClusterMatcherService.ClusterMatch> clusterMatch = clusterMatcherService.match(identity);
+            ResourceWorkEntity work = resolveWorkForAutoReset(type, item, identity, clusterMatch);
+            item.setWorkId(work.getId());
+            if (clusterMatch.map(UrlClusterMatcherService.ClusterMatch::variantHint).orElse(null) != null) {
+                item.setEdition(clusterMatch.get().variantHint());
+                item.setVariantKind(VariantKind.OTHER.code());
+            }
+        }
+        return toItemDto(itemRepository.save(item), type, findOptionalWork(item.getWorkId()));
     }
 
     @Transactional
@@ -205,7 +291,7 @@ public class ExternalResourceService {
 
         ResourceItemEntity entity = new ResourceItemEntity();
         entity.setId("ri-" + compactUuid());
-        fillItem(entity, type, work, request.title(), identityValue, request.sourceUrl(), request.edition(), request.note());
+        fillItem(entity, type, work, request);
         return toItemDto(itemRepository.save(entity), type, work);
     }
 
@@ -226,14 +312,54 @@ public class ExternalResourceService {
                 });
         }
 
-        fillItem(entity, type, work, request.title(), identityValue, request.sourceUrl(), request.edition(), request.note());
+        fillItem(entity, type, work, request);
         return toItemDto(itemRepository.save(entity), type, work);
     }
 
     @Transactional
     public void removeItem(String id) {
         excerptRepository.deleteByResourceItemId(id);
+        itemRelationRepository.deleteByFromItemIdOrToItemId(id, id);
         itemRepository.delete(findItem(id));
+    }
+
+    @Transactional(readOnly = true)
+    public List<ResourceItemRelationDto> listItemRelations(String itemId) {
+        findItem(itemId);
+        Map<String, ResourceItemEntity> items = itemRepository.findAll().stream()
+            .collect(Collectors.toMap(ResourceItemEntity::getId, Function.identity()));
+        return itemRelationRepository.findByFromItemIdOrToItemIdOrderByCreatedAtAsc(itemId, itemId)
+            .stream()
+            .map(relation -> toRelationDto(relation, items))
+            .toList();
+    }
+
+    @Transactional
+    public ResourceItemRelationDto createItemRelation(CreateResourceItemRelationRequest request) {
+        if (request.fromItemId().equals(request.toItemId())) {
+            throw new BusinessException(40000, "cannot relate an item to itself");
+        }
+        ResourceItemEntity from = findItem(request.fromItemId());
+        ResourceItemEntity to = findItem(request.toItemId());
+        if (!from.getTypeId().equals(to.getTypeId())) {
+            throw new BusinessException(40000, "related items must share the same resource type");
+        }
+        String relationType = normalizeRelationType(request.relationType());
+
+        ResourceItemRelationEntity entity = new ResourceItemRelationEntity();
+        entity.setId("rir-" + compactUuid());
+        entity.setFromItemId(from.getId());
+        entity.setToItemId(to.getId());
+        entity.setRelationType(relationType);
+        entity.setNote(blankToNull(request.note()));
+        entity = itemRelationRepository.save(entity);
+        Map<String, ResourceItemEntity> items = Map.of(from.getId(), from, to.getId(), to);
+        return toRelationDto(entity, items);
+    }
+
+    @Transactional
+    public void deleteItemRelation(String relationId) {
+        itemRelationRepository.delete(findItemRelation(relationId));
     }
 
     @Transactional(readOnly = true)
@@ -280,23 +406,102 @@ public class ExternalResourceService {
         excerptRepository.delete(findExcerpt(id));
     }
 
-    private void fillItem(
-        ResourceItemEntity entity,
-        ResourceTypeEntity type,
-        ResourceWorkEntity work,
-        String title,
-        String identityValue,
-        String sourceUrl,
-        String edition,
-        String note
-    ) {
+    private void fillItem(ResourceItemEntity entity, ResourceTypeEntity type, ResourceWorkEntity work, CreateResourceItemRequest request) {
         entity.setTypeId(type.getId());
         entity.setWorkId(work == null ? null : work.getId());
-        entity.setTitle(normalizeRequired(title, "resource item title required"));
+        entity.setTitle(normalizeRequired(request.title(), "resource item title required"));
+        String identityValue = blankToNull(request.identityValue());
+        if (WEB_LINK_TYPE_CODE.equals(type.getCode()) && identityValue != null) {
+            String baseUrl = ExternalUrlNormalizer.toBasePageUrl(identityValue);
+            if (baseUrl != null) {
+                identityValue = baseUrl;
+            }
+        }
         entity.setIdentityValue(identityValue);
-        entity.setSourceUrl(blankToNull(sourceUrl));
-        entity.setEdition(blankToNull(edition));
-        entity.setNote(blankToNull(note));
+        entity.setSourceUrl(blankToNull(request.sourceUrl()));
+        entity.setEdition(blankToNull(request.edition()));
+        entity.setNote(blankToNull(request.note()));
+        entity.setTitleSource(FieldSource.orAuto(request.titleSource()));
+        entity.setWorkIdSource(FieldSource.orAuto(request.workIdSource()));
+        entity.setVariantKind(VariantKind.normalizeCode(request.variantKind()));
+    }
+
+    private void fillItem(ResourceItemEntity entity, ResourceTypeEntity type, ResourceWorkEntity work, UpdateResourceItemRequest request) {
+        entity.setTypeId(type.getId());
+        entity.setWorkId(work == null ? null : work.getId());
+        entity.setTitle(normalizeRequired(request.title(), "resource item title required"));
+        String identityValue = blankToNull(request.identityValue());
+        if (WEB_LINK_TYPE_CODE.equals(type.getCode()) && identityValue != null) {
+            String baseUrl = ExternalUrlNormalizer.toBasePageUrl(identityValue);
+            if (baseUrl != null) {
+                identityValue = baseUrl;
+            }
+        }
+        entity.setIdentityValue(identityValue);
+        entity.setSourceUrl(blankToNull(request.sourceUrl()));
+        entity.setEdition(blankToNull(request.edition()));
+        entity.setNote(blankToNull(request.note()));
+        if (request.titleSource() != null) {
+            entity.setTitleSource(FieldSource.orAuto(request.titleSource()));
+        }
+        if (request.workIdSource() != null) {
+            entity.setWorkIdSource(FieldSource.orAuto(request.workIdSource()));
+        }
+        if (request.variantKind() != null) {
+            entity.setVariantKind(VariantKind.normalizeCode(request.variantKind()));
+        }
+    }
+
+    private ResourceWorkEntity resolveWorkForAutoReset(
+        ResourceTypeEntity type,
+        ResourceItemEntity item,
+        String baseUrl,
+        Optional<UrlClusterMatcherService.ClusterMatch> clusterMatch
+    ) {
+        if (clusterMatch.isPresent()) {
+            String clusterKey = clusterMatch.get().clusterKey();
+            return workRepository.findByTypeIdAndClusterKey(type.getId(), clusterKey)
+                .orElseGet(() -> {
+                    ResourceWorkEntity work = new ResourceWorkEntity();
+                    work.setId("rw-" + compactUuid());
+                    work.setTypeId(type.getId());
+                    work.setTitle(item.getTitle());
+                    work.setTitleSource(FieldSource.AUTO);
+                    work.setClusterKey(clusterKey);
+                    work.setDescription("URL 聚类：" + clusterKey);
+                    return workRepository.save(work);
+                });
+        }
+        return workRepository.findById(item.getWorkId())
+            .orElseGet(() -> {
+                ResourceWorkEntity work = new ResourceWorkEntity();
+                work.setId("rw-" + compactUuid());
+                work.setTypeId(type.getId());
+                work.setTitle(item.getTitle());
+                work.setTitleSource(FieldSource.AUTO);
+                work.setClusterKey("single|" + baseUrl);
+                work.setDescription("待归并：" + baseUrl);
+                return workRepository.save(work);
+            });
+    }
+
+    private ResourceItemRelationEntity findItemRelation(String id) {
+        return itemRelationRepository.findById(id)
+            .orElseThrow(() -> new BusinessException(40001, "resource item relation not found"));
+    }
+
+    private ResourceItemRelationDto toRelationDto(ResourceItemRelationEntity entity, Map<String, ResourceItemEntity> items) {
+        ResourceItemEntity from = items.get(entity.getFromItemId());
+        ResourceItemEntity to = items.get(entity.getToItemId());
+        return new ResourceItemRelationDto(
+            entity.getId(),
+            entity.getFromItemId(),
+            from == null ? "" : from.getTitle(),
+            entity.getToItemId(),
+            to == null ? "" : to.getTitle(),
+            entity.getRelationType(),
+            entity.getNote()
+        );
     }
 
     private void ensureWorkTypeMatches(ResourceTypeEntity type, ResourceWorkEntity work) {
@@ -401,7 +606,9 @@ public class ExternalResourceService {
             type == null ? "" : type.getName(),
             entity.getTitle(),
             entity.getSubtitle(),
-            entity.getDescription()
+            entity.getDescription(),
+            entity.getClusterKey(),
+            entity.getTitleSource()
         );
     }
 
@@ -418,7 +625,10 @@ public class ExternalResourceService {
             entity.getIdentityValue(),
             entity.getSourceUrl(),
             entity.getEdition(),
-            entity.getNote()
+            entity.getNote(),
+            entity.getTitleSource(),
+            entity.getWorkIdSource(),
+            entity.getVariantKind()
         );
     }
 
@@ -456,6 +666,14 @@ public class ExternalResourceService {
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private String normalizeRelationType(String value) {
+        String normalized = normalizeRequired(value, "relation type required").toLowerCase();
+        if (!normalized.matches("[a-z][a-z0-9_]*")) {
+            throw new BusinessException(40000, "invalid relation type");
+        }
+        return normalized;
     }
 
     private String compactUuid() {

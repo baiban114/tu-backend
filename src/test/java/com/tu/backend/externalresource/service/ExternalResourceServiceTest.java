@@ -17,9 +17,11 @@ import com.tu.backend.externalresource.entity.ResourceItemEntity;
 import com.tu.backend.externalresource.entity.ResourceTypeEntity;
 import com.tu.backend.externalresource.entity.ResourceWorkEntity;
 import com.tu.backend.externalresource.repository.ResourceExcerptRepository;
+import com.tu.backend.externalresource.repository.ResourceItemRelationRepository;
 import com.tu.backend.externalresource.repository.ResourceItemRepository;
 import com.tu.backend.externalresource.repository.ResourceTypeRepository;
 import com.tu.backend.externalresource.repository.ResourceWorkRepository;
+import com.tu.backend.externalresource.service.UrlClusterMatcherService;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -38,6 +40,9 @@ class ExternalResourceServiceTest {
             "",
             "无归类图书",
             "",
+            null,
+            null,
+            null,
             null,
             null,
             null
@@ -219,11 +224,15 @@ class ExternalResourceServiceTest {
         final ResourceWorkRepository workRepository = mock(ResourceWorkRepository.class);
         final ResourceItemRepository itemRepository = mock(ResourceItemRepository.class);
         final ResourceExcerptRepository excerptRepository = mock(ResourceExcerptRepository.class);
+        final ResourceItemRelationRepository itemRelationRepository = mock(ResourceItemRelationRepository.class);
+        final UrlClusterMatcherService clusterMatcherService = mock(UrlClusterMatcherService.class);
         final ExternalResourceService service = new ExternalResourceService(
             typeRepository,
             workRepository,
             itemRepository,
-            excerptRepository
+            excerptRepository,
+            itemRelationRepository,
+            clusterMatcherService
         );
 
         void stubBookItem() {
