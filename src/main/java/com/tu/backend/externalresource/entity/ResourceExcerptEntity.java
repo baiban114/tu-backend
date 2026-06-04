@@ -26,7 +26,7 @@ public class ResourceExcerptEntity {
     @Column(length = 255)
     private String locator;
 
-    @Column(name = "excerpt_text", columnDefinition = "text", nullable = false)
+    @Column(name = "excerpt_text", columnDefinition = "text")
     private String excerptText;
 
     @Column(length = 1024)

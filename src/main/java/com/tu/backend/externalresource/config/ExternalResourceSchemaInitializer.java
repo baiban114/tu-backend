@@ -14,10 +14,21 @@ import org.springframework.stereotype.Component;
 public class ExternalResourceSchemaInitializer implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(ExternalResourceSchemaInitializer.class);
-    private static final String TABLE_NAME = "external_resource_item";
-    private static final List<ColumnSpec> NULLABLE_COLUMNS = List.of(
-        new ColumnSpec("work_id", "varchar(64)"),
-        new ColumnSpec("identity_value", "varchar(512)")
+
+    private static final List<TableSpec> TABLES = List.of(
+        new TableSpec(
+            "external_resource_item",
+            List.of(
+                new ColumnSpec("work_id", "varchar(64)"),
+                new ColumnSpec("identity_value", "varchar(512)")
+            )
+        ),
+        new TableSpec(
+            "external_resource_excerpt",
+            List.of(
+                new ColumnSpec("excerpt_text", "text")
+            )
+        )
     );
 
     private final JdbcTemplate jdbcTemplate;
@@ -30,38 +41,46 @@ public class ExternalResourceSchemaInitializer implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         try {
             String database = databaseProductName();
-            if (!tableExists(database)) {
-                return;
-            }
-            for (ColumnSpec column : NULLABLE_COLUMNS) {
-                relaxNotNull(database, column);
+            for (TableSpec table : TABLES) {
+                if (!tableExists(database, table.name())) {
+                    continue;
+                }
+                for (ColumnSpec column : table.columns()) {
+                    relaxNotNull(database, table.name(), column);
+                }
             }
         } catch (Exception ex) {
-            log.error("failed to relax external resource item nullable columns", ex);
+            log.error("failed to relax external resource nullable columns", ex);
         }
     }
 
-    private void relaxNotNull(String database, ColumnSpec column) {
-        if (!columnExists(database, column.name()) || columnAllowsNull(database, column.name())) {
+    private void relaxNotNull(String database, String tableName, ColumnSpec column) {
+        if (!columnExists(database, tableName, column.name()) || columnAllowsNull(database, tableName, column.name())) {
             return;
         }
         try {
             if (database.contains("mysql") || database.contains("mariadb")) {
-                jdbcTemplate.execute("alter table " + TABLE_NAME + " modify column " + column.name() + " " + column.sqlType() + " null");
-                log.info("relaxed external resource item column nullability; table={}, column={}", TABLE_NAME, column.name());
+                jdbcTemplate.execute(
+                    "alter table " + tableName + " modify column " + column.name() + " " + column.sqlType() + " null"
+                );
+                log.info("relaxed external resource column nullability; table={}, column={}", tableName, column.name());
                 return;
             }
             if (database.contains("postgresql")) {
-                jdbcTemplate.execute("alter table " + TABLE_NAME + " alter column " + column.name() + " drop not null");
-                log.info("relaxed external resource item column nullability; table={}, column={}", TABLE_NAME, column.name());
+                jdbcTemplate.execute(
+                    "alter table " + tableName + " alter column " + column.name() + " drop not null"
+                );
+                log.info("relaxed external resource column nullability; table={}, column={}", tableName, column.name());
                 return;
             }
             if (database.contains("h2")) {
-                jdbcTemplate.execute("alter table " + TABLE_NAME + " alter column " + column.name() + " " + column.sqlType() + " null");
-                log.info("relaxed external resource item column nullability; table={}, column={}", TABLE_NAME, column.name());
+                jdbcTemplate.execute(
+                    "alter table " + tableName + " alter column " + column.name() + " " + column.sqlType() + " null"
+                );
+                log.info("relaxed external resource column nullability; table={}, column={}", tableName, column.name());
             }
         } catch (Exception ex) {
-            log.warn("failed to relax external resource item column; column={}", column.name(), ex);
+            log.warn("failed to relax external resource column; table={}, column={}", tableName, column.name(), ex);
         }
     }
 
@@ -72,14 +91,14 @@ public class ExternalResourceSchemaInitializer implements ApplicationRunner {
         });
     }
 
-    private boolean tableExists(String database) {
+    private boolean tableExists(String database, String tableName) {
         try {
             Integer count;
             if (database.contains("mysql") || database.contains("mariadb")) {
                 count = jdbcTemplate.queryForObject(
                     "select count(*) from information_schema.tables where table_schema = database() and table_name = ?",
                     Integer.class,
-                    TABLE_NAME
+                    tableName
                 );
                 return count != null && count > 0;
             }
@@ -87,7 +106,7 @@ public class ExternalResourceSchemaInitializer implements ApplicationRunner {
                 count = jdbcTemplate.queryForObject(
                     "select count(*) from information_schema.tables where table_schema = current_schema() and table_name = ?",
                     Integer.class,
-                    TABLE_NAME
+                    tableName
                 );
                 return count != null && count > 0;
             }
@@ -95,25 +114,25 @@ public class ExternalResourceSchemaInitializer implements ApplicationRunner {
                 count = jdbcTemplate.queryForObject(
                     "select count(*) from information_schema.tables where lower(table_name) = ?",
                     Integer.class,
-                    TABLE_NAME
+                    tableName.toLowerCase()
                 );
                 return count != null && count > 0;
             }
             return false;
         } catch (Exception ex) {
-            log.warn("failed to check external resource item table existence", ex);
+            log.warn("failed to check external resource table existence; table={}", tableName, ex);
             return false;
         }
     }
 
-    private boolean columnExists(String database, String column) {
+    private boolean columnExists(String database, String tableName, String column) {
         try {
             Integer count;
             if (database.contains("mysql") || database.contains("mariadb")) {
                 count = jdbcTemplate.queryForObject(
                     "select count(*) from information_schema.columns where table_schema = database() and table_name = ? and column_name = ?",
                     Integer.class,
-                    TABLE_NAME,
+                    tableName,
                     column
                 );
                 return count != null && count > 0;
@@ -122,7 +141,7 @@ public class ExternalResourceSchemaInitializer implements ApplicationRunner {
                 count = jdbcTemplate.queryForObject(
                     "select count(*) from information_schema.columns where table_schema = current_schema() and table_name = ? and column_name = ?",
                     Integer.class,
-                    TABLE_NAME,
+                    tableName,
                     column
                 );
                 return count != null && count > 0;
@@ -131,50 +150,53 @@ public class ExternalResourceSchemaInitializer implements ApplicationRunner {
                 count = jdbcTemplate.queryForObject(
                     "select count(*) from information_schema.columns where lower(table_name) = ? and lower(column_name) = ?",
                     Integer.class,
-                    TABLE_NAME,
-                    column
+                    tableName.toLowerCase(),
+                    column.toLowerCase()
                 );
                 return count != null && count > 0;
             }
             return false;
         } catch (Exception ex) {
-            log.warn("failed to inspect external resource item column; column={}", column, ex);
+            log.warn("failed to inspect external resource column; table={}, column={}", tableName, column, ex);
             return false;
         }
     }
 
-    private boolean columnAllowsNull(String database, String column) {
+    private boolean columnAllowsNull(String database, String tableName, String column) {
         try {
             String nullable;
             if (database.contains("mysql") || database.contains("mariadb")) {
                 nullable = jdbcTemplate.queryForObject(
                     "select is_nullable from information_schema.columns where table_schema = database() and table_name = ? and column_name = ?",
                     String.class,
-                    TABLE_NAME,
+                    tableName,
                     column
                 );
             } else if (database.contains("postgresql")) {
                 nullable = jdbcTemplate.queryForObject(
                     "select is_nullable from information_schema.columns where table_schema = current_schema() and table_name = ? and column_name = ?",
                     String.class,
-                    TABLE_NAME,
+                    tableName,
                     column
                 );
             } else if (database.contains("h2")) {
                 nullable = jdbcTemplate.queryForObject(
                     "select is_nullable from information_schema.columns where lower(table_name) = ? and lower(column_name) = ?",
                     String.class,
-                    TABLE_NAME,
-                    column
+                    tableName.toLowerCase(),
+                    column.toLowerCase()
                 );
             } else {
                 return true;
             }
             return "YES".equalsIgnoreCase(nullable) || "TRUE".equalsIgnoreCase(nullable);
         } catch (Exception ex) {
-            log.warn("failed to inspect external resource item column nullability; column={}", column, ex);
+            log.warn("failed to inspect external resource column nullability; table={}, column={}", tableName, column, ex);
             return false;
         }
+    }
+
+    private record TableSpec(String name, List<ColumnSpec> columns) {
     }
 
     private record ColumnSpec(String name, String sqlType) {

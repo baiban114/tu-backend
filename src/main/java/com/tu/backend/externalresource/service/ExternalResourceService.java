@@ -21,7 +21,6 @@ import com.tu.backend.externalresource.repository.ResourceExcerptRepository;
 import com.tu.backend.externalresource.repository.ResourceItemRepository;
 import com.tu.backend.externalresource.repository.ResourceTypeRepository;
 import com.tu.backend.externalresource.repository.ResourceWorkRepository;
-import com.tu.backend.reference.service.ReferenceService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,25 +34,23 @@ import java.util.stream.Collectors;
 public class ExternalResourceService {
 
     private static final String BOOK_TYPE_CODE = "book";
+    private static final String WEB_LINK_TYPE_CODE = "web-link";
 
     private final ResourceTypeRepository typeRepository;
     private final ResourceWorkRepository workRepository;
     private final ResourceItemRepository itemRepository;
     private final ResourceExcerptRepository excerptRepository;
-    private final ReferenceService referenceService;
 
     public ExternalResourceService(
         ResourceTypeRepository typeRepository,
         ResourceWorkRepository workRepository,
         ResourceItemRepository itemRepository,
-        ResourceExcerptRepository excerptRepository,
-        ReferenceService referenceService
+        ResourceExcerptRepository excerptRepository
     ) {
         this.typeRepository = typeRepository;
         this.workRepository = workRepository;
         this.itemRepository = itemRepository;
         this.excerptRepository = excerptRepository;
-        this.referenceService = referenceService;
     }
 
     @Transactional(readOnly = true)
@@ -234,10 +231,7 @@ public class ExternalResourceService {
     }
 
     @Transactional
-    public void deleteItem(String id) {
-        if (referenceService.hasResourceItemReferences(id)) {
-            throw new BusinessException(40009, "resource item is in use");
-        }
+    public void removeItem(String id) {
         excerptRepository.deleteByResourceItemId(id);
         itemRepository.delete(findItem(id));
     }
@@ -245,7 +239,7 @@ public class ExternalResourceService {
     @Transactional(readOnly = true)
     public List<ResourceExcerptDto> listExcerpts(String resourceItemId) {
         ResourceItemEntity item = findItem(resourceItemId);
-        ensureBookItem(item);
+        ensureExcerptSupportedItem(item);
         return excerptRepository.findByResourceItemIdOrderBySortOrderAscCreatedAtAsc(item.getId())
             .stream()
             .map(excerpt -> toExcerptDto(excerpt, item))
@@ -256,14 +250,14 @@ public class ExternalResourceService {
     public ResourceExcerptDto getExcerpt(String id) {
         ResourceExcerptEntity excerpt = findExcerpt(id);
         ResourceItemEntity item = findItem(excerpt.getResourceItemId());
-        ensureBookItem(item);
+        ensureExcerptSupportedItem(item);
         return toExcerptDto(excerpt, item);
     }
 
     @Transactional
     public ResourceExcerptDto createExcerpt(String resourceItemId, CreateResourceExcerptRequest request) {
         ResourceItemEntity item = findItem(resourceItemId);
-        ensureBookItem(item);
+        ensureExcerptSupportedItem(item);
 
         ResourceExcerptEntity entity = new ResourceExcerptEntity();
         entity.setId("re-" + compactUuid());
@@ -276,7 +270,7 @@ public class ExternalResourceService {
     public ResourceExcerptDto updateExcerpt(String id, UpdateResourceExcerptRequest request) {
         ResourceExcerptEntity entity = findExcerpt(id);
         ResourceItemEntity item = findItem(entity.getResourceItemId());
-        ensureBookItem(item);
+        ensureExcerptSupportedItem(item);
         fillExcerpt(entity, request.title(), request.locator(), request.excerptText(), request.note(), request.sortOrder(), item.getId());
         return toExcerptDto(excerptRepository.save(entity), item);
     }
@@ -311,10 +305,11 @@ public class ExternalResourceService {
         }
     }
 
-    private void ensureBookItem(ResourceItemEntity item) {
+    private void ensureExcerptSupportedItem(ResourceItemEntity item) {
         ResourceTypeEntity type = findType(item.getTypeId());
-        if (!BOOK_TYPE_CODE.equals(type.getCode())) {
-            throw new BusinessException(40000, "resource excerpts are only supported for book resources");
+        String code = type.getCode();
+        if (!BOOK_TYPE_CODE.equals(code) && !WEB_LINK_TYPE_CODE.equals(code)) {
+            throw new BusinessException(40000, "resource excerpts are only supported for book or web-link resources");
         }
     }
 
@@ -329,7 +324,7 @@ public class ExternalResourceService {
     ) {
         entity.setTitle(normalizeRequired(title, "resource excerpt title required"));
         entity.setLocator(blankToNull(locator));
-        entity.setExcerptText(normalizeRequired(excerptText, "resource excerpt text required"));
+        entity.setExcerptText(blankToNull(excerptText));
         entity.setNote(blankToNull(note));
         entity.setSortOrder(sortOrder == null ? nextExcerptSortOrder(resourceItemId) : Math.max(0, sortOrder));
     }

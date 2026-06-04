@@ -20,7 +20,6 @@ import com.tu.backend.externalresource.repository.ResourceExcerptRepository;
 import com.tu.backend.externalresource.repository.ResourceItemRepository;
 import com.tu.backend.externalresource.repository.ResourceTypeRepository;
 import com.tu.backend.externalresource.repository.ResourceWorkRepository;
-import com.tu.backend.reference.service.ReferenceService;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -78,6 +77,25 @@ class ExternalResourceServiceTest {
     }
 
     @Test
+    void createsExcerptWithoutBodyText() {
+        TestContext context = new TestContext();
+        context.stubBookItem();
+        when(context.excerptRepository.findByResourceItemId("ri-book")).thenReturn(List.of());
+        when(context.excerptRepository.save(any(ResourceExcerptEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var dto = context.service.createExcerpt("ri-book", new CreateResourceExcerptRequest(
+            "仅标题节选",
+            "p. 1",
+            "   ",
+            null,
+            0
+        ));
+
+        assertThat(dto.title()).isEqualTo("仅标题节选");
+        assertThat(dto.excerptText()).isNull();
+    }
+
+    @Test
     void updatesBookExcerptAndClampsSortOrder() {
         TestContext context = new TestContext();
         context.stubBookItem();
@@ -116,18 +134,42 @@ class ExternalResourceServiceTest {
             0
         )))
             .isInstanceOf(BusinessException.class)
-            .hasMessageContaining("resource excerpts are only supported for book resources");
+            .hasMessageContaining("resource excerpts are only supported for book or web-link resources");
         verify(context.excerptRepository, never()).save(any());
     }
 
     @Test
-    void deletingResourceItemDeletesItsExcerptsWhenNoUrlReferenceUsesIt() {
+    void createsExcerptsForWebLinkResources() {
+        TestContext context = new TestContext();
+        ResourceTypeEntity linkType = type("rt-link", "web-link", "网络链接");
+        ResourceWorkEntity linkWork = work("rw-link", "rt-link", "示例站点");
+        ResourceItemEntity linkItem = item("ri-link", "rt-link", "rw-link", "示例链接");
+        when(context.typeRepository.findById("rt-link")).thenReturn(Optional.of(linkType));
+        when(context.workRepository.findById("rw-link")).thenReturn(Optional.of(linkWork));
+        when(context.itemRepository.findById("ri-link")).thenReturn(Optional.of(linkItem));
+        when(context.excerptRepository.findByResourceItemId("ri-link")).thenReturn(List.of());
+        when(context.excerptRepository.save(any(ResourceExcerptEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var dto = context.service.createExcerpt("ri-link", new CreateResourceExcerptRequest(
+            "页面要点",
+            "#intro",
+            "这是从网页摘录的要点。",
+            null,
+            0
+        ));
+
+        assertThat(dto.title()).isEqualTo("页面要点");
+        assertThat(dto.locator()).isEqualTo("#intro");
+        verify(context.excerptRepository).save(any(ResourceExcerptEntity.class));
+    }
+
+    @Test
+    void removingResourceItemDeletesItsExcerptsRegardlessOfReferences() {
         TestContext context = new TestContext();
         ResourceItemEntity item = item("ri-book", "rt-book", "rw-book", "示例图书");
         when(context.itemRepository.findById("ri-book")).thenReturn(Optional.of(item));
-        when(context.referenceService.hasResourceItemReferences("ri-book")).thenReturn(false);
 
-        context.service.deleteItem("ri-book");
+        context.service.removeItem("ri-book");
 
         verify(context.excerptRepository).deleteByResourceItemId("ri-book");
         verify(context.itemRepository).delete(item);
@@ -177,13 +219,11 @@ class ExternalResourceServiceTest {
         final ResourceWorkRepository workRepository = mock(ResourceWorkRepository.class);
         final ResourceItemRepository itemRepository = mock(ResourceItemRepository.class);
         final ResourceExcerptRepository excerptRepository = mock(ResourceExcerptRepository.class);
-        final ReferenceService referenceService = mock(ReferenceService.class);
         final ExternalResourceService service = new ExternalResourceService(
             typeRepository,
             workRepository,
             itemRepository,
-            excerptRepository,
-            referenceService
+            excerptRepository
         );
 
         void stubBookItem() {

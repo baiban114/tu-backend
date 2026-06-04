@@ -71,8 +71,8 @@ public class ResourceItemController {
     }
 
     @DeleteMapping("/{id}")
-    public ApiResponse<Void> delete(@PathVariable String id) {
-        externalResourceService.deleteItem(id);
+    public ApiResponse<Void> remove(@PathVariable String id) {
+        externalResourceService.removeItem(id);
         return ApiResponse.success();
     }
 }
