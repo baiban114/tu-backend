@@ -9,13 +9,16 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tu.backend.common.BusinessException;
+import com.tu.backend.externalresource.dto.CreateResourceChapterRequest;
 import com.tu.backend.externalresource.dto.CreateResourceItemRequest;
 import com.tu.backend.externalresource.dto.CreateResourceExcerptRequest;
 import com.tu.backend.externalresource.dto.UpdateResourceExcerptRequest;
+import com.tu.backend.externalresource.entity.ResourceChapterEntity;
 import com.tu.backend.externalresource.entity.ResourceExcerptEntity;
 import com.tu.backend.externalresource.entity.ResourceItemEntity;
 import com.tu.backend.externalresource.entity.ResourceTypeEntity;
 import com.tu.backend.externalresource.entity.ResourceWorkEntity;
+import com.tu.backend.externalresource.repository.ResourceChapterRepository;
 import com.tu.backend.externalresource.repository.ResourceExcerptRepository;
 import com.tu.backend.externalresource.repository.ResourceItemRelationRepository;
 import com.tu.backend.externalresource.repository.ResourceItemRepository;
@@ -24,6 +27,7 @@ import com.tu.backend.externalresource.repository.ResourceWorkRepository;
 import com.tu.backend.externalresource.service.UrlClusterMatcherService;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class ExternalResourceServiceTest {
@@ -65,6 +69,7 @@ class ExternalResourceServiceTest {
 
         var dto = context.service.createExcerpt("ri-book", new CreateResourceExcerptRequest(
             "  新节选  ",
+            null,
             " 第 2 章 ",
             "  节选正文  ",
             "  备注  ",
@@ -90,6 +95,7 @@ class ExternalResourceServiceTest {
 
         var dto = context.service.createExcerpt("ri-book", new CreateResourceExcerptRequest(
             "仅标题节选",
+            null,
             "p. 1",
             "   ",
             null,
@@ -110,6 +116,7 @@ class ExternalResourceServiceTest {
 
         var dto = context.service.updateExcerpt("re-1", new UpdateResourceExcerptRequest(
             "更新节选",
+            null,
             "",
             "更新正文",
             "",
@@ -134,6 +141,7 @@ class ExternalResourceServiceTest {
         assertThatThrownBy(() -> context.service.createExcerpt("ri-article", new CreateResourceExcerptRequest(
             "不允许",
             null,
+            null,
             "正文",
             null,
             0
@@ -157,6 +165,7 @@ class ExternalResourceServiceTest {
 
         var dto = context.service.createExcerpt("ri-link", new CreateResourceExcerptRequest(
             "页面要点",
+            null,
             "#intro",
             "这是从网页摘录的要点。",
             null,
@@ -177,7 +186,116 @@ class ExternalResourceServiceTest {
         context.service.removeItem("ri-book");
 
         verify(context.excerptRepository).deleteByResourceItemId("ri-book");
+        verify(context.chapterRepository).deleteByResourceItemId("ri-book");
         verify(context.itemRepository).delete(item);
+    }
+
+    @Test
+    void createsNestedChaptersForBookItem() {
+        TestContext context = new TestContext();
+        context.stubBookItem();
+        when(context.chapterRepository.findByResourceItemIdOrderBySortOrderAscCreatedAtAsc("ri-book"))
+            .thenReturn(List.of());
+        when(context.chapterRepository.save(any(ResourceChapterEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(context.chapterRepository.findById("rc-parent")).thenReturn(Optional.of(chapter("rc-parent", "ri-book", null, "第一卷", 0)));
+
+        var parent = context.service.createChapter("ri-book", new CreateResourceChapterRequest(
+            null,
+            "第一卷",
+            "p.1–p.100",
+            null,
+            0
+        ));
+        var child = context.service.createChapter("ri-book", new CreateResourceChapterRequest(
+            "rc-parent",
+            "第一章",
+            null,
+            null,
+            0
+        ));
+
+        assertThat(parent.id()).startsWith("rc-");
+        assertThat(parent.parentId()).isNull();
+        assertThat(child.parentId()).isEqualTo("rc-parent");
+    }
+
+    @Test
+    void createsExcerptWithChapterId() {
+        TestContext context = new TestContext();
+        context.stubBookItem();
+        ResourceChapterEntity chapter = chapter("rc-1", "ri-book", null, "第一章", 0);
+        when(context.chapterRepository.findById("rc-1")).thenReturn(Optional.of(chapter));
+        when(context.excerptRepository.findByResourceItemId("ri-book")).thenReturn(List.of());
+        when(context.excerptRepository.save(any(ResourceExcerptEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(context.chapterRepository.findByResourceItemIdOrderBySortOrderAscCreatedAtAsc("ri-book"))
+            .thenReturn(List.of(chapter));
+
+        var dto = context.service.createExcerpt("ri-book", new CreateResourceExcerptRequest(
+            "节选",
+            "rc-1",
+            "p.12",
+            "正文",
+            null,
+            0
+        ));
+
+        assertThat(dto.chapterId()).isEqualTo("rc-1");
+        assertThat(dto.chapterTitle()).isEqualTo("第一章");
+    }
+
+    @Test
+    void rejectsExcerptChapterFromDifferentItem() {
+        TestContext context = new TestContext();
+        context.stubBookItem();
+        ResourceChapterEntity otherChapter = chapter("rc-other", "ri-other", null, "其他章节", 0);
+        when(context.chapterRepository.findById("rc-other")).thenReturn(Optional.of(otherChapter));
+
+        assertThatThrownBy(() -> context.service.createExcerpt("ri-book", new CreateResourceExcerptRequest(
+            "节选",
+            "rc-other",
+            null,
+            "正文",
+            null,
+            0
+        )))
+            .isInstanceOf(BusinessException.class)
+            .hasMessageContaining("resource chapter does not belong to resource item");
+    }
+
+    @Test
+    void deletingChapterUnbindsExcerptsAndRemovesDescendants() {
+        TestContext context = new TestContext();
+        context.stubBookItem();
+        ResourceChapterEntity parent = chapter("rc-parent", "ri-book", null, "第一卷", 0);
+        ResourceChapterEntity child = chapter("rc-child", "ri-book", "rc-parent", "第一章", 1);
+        ResourceExcerptEntity excerpt = excerpt("re-1", "ri-book", "节选", 0);
+        excerpt.setChapterId("rc-child");
+        when(context.chapterRepository.findById("rc-parent")).thenReturn(Optional.of(parent));
+        when(context.chapterRepository.findByResourceItemIdOrderBySortOrderAscCreatedAtAsc("ri-book"))
+            .thenReturn(List.of(parent, child));
+        when(context.excerptRepository.findByResourceItemId("ri-book")).thenReturn(List.of(excerpt));
+        when(context.excerptRepository.save(any(ResourceExcerptEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        context.service.deleteChapter("rc-parent");
+
+        assertThat(excerpt.getChapterId()).isNull();
+        verify(context.chapterRepository).deleteAllById(Set.of("rc-parent", "rc-child"));
+    }
+
+    private static ResourceChapterEntity chapter(
+        String id,
+        String itemId,
+        String parentId,
+        String title,
+        int sortOrder
+    ) {
+        ResourceChapterEntity entity = new ResourceChapterEntity();
+        entity.setId(id);
+        entity.setResourceItemId(itemId);
+        entity.setParentId(parentId);
+        entity.setTitle(title);
+        entity.setSortOrder(sortOrder);
+        return entity;
     }
 
     private static ResourceTypeEntity type(String id, String code, String name) {
@@ -224,6 +342,7 @@ class ExternalResourceServiceTest {
         final ResourceWorkRepository workRepository = mock(ResourceWorkRepository.class);
         final ResourceItemRepository itemRepository = mock(ResourceItemRepository.class);
         final ResourceExcerptRepository excerptRepository = mock(ResourceExcerptRepository.class);
+        final ResourceChapterRepository chapterRepository = mock(ResourceChapterRepository.class);
         final ResourceItemRelationRepository itemRelationRepository = mock(ResourceItemRelationRepository.class);
         final UrlClusterMatcherService clusterMatcherService = mock(UrlClusterMatcherService.class);
         final ExternalResourceService service = new ExternalResourceService(
@@ -231,6 +350,7 @@ class ExternalResourceServiceTest {
             workRepository,
             itemRepository,
             excerptRepository,
+            chapterRepository,
             itemRelationRepository,
             clusterMatcherService
         );

@@ -10,8 +10,8 @@ import jakarta.persistence.Table;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "external_resource_excerpt")
-public class ResourceExcerptEntity {
+@Table(name = "external_resource_chapter")
+public class ResourceChapterEntity {
 
     @Id
     @Column(length = 64, nullable = false)
@@ -20,17 +20,14 @@ public class ResourceExcerptEntity {
     @Column(name = "resource_item_id", length = 64, nullable = false)
     private String resourceItemId;
 
-    @Column(name = "chapter_id", length = 64)
-    private String chapterId;
+    @Column(name = "parent_id", length = 64)
+    private String parentId;
 
     @Column(length = 255, nullable = false)
     private String title;
 
     @Column(length = 255)
     private String locator;
-
-    @Column(name = "excerpt_text", columnDefinition = "text")
-    private String excerptText;
 
     @Column(length = 1024)
     private String note;
@@ -75,12 +72,12 @@ public class ResourceExcerptEntity {
         this.resourceItemId = resourceItemId;
     }
 
-    public String getChapterId() {
-        return chapterId;
+    public String getParentId() {
+        return parentId;
     }
 
-    public void setChapterId(String chapterId) {
-        this.chapterId = chapterId;
+    public void setParentId(String parentId) {
+        this.parentId = parentId;
     }
 
     public String getTitle() {
@@ -97,14 +94,6 @@ public class ResourceExcerptEntity {
 
     public void setLocator(String locator) {
         this.locator = locator;
-    }
-
-    public String getExcerptText() {
-        return excerptText;
-    }
-
-    public void setExcerptText(String excerptText) {
-        this.excerptText = excerptText;
     }
 
     public String getNote() {

@@ -1,14 +1,12 @@
 package com.tu.backend.externalresource.dto;
 
-public record ResourceExcerptDto(
+public record ResourceChapterDto(
     String id,
     String resourceItemId,
     String resourceItemTitle,
-    String chapterId,
-    String chapterTitle,
+    String parentId,
     String title,
     String locator,
-    String excerptText,
     String note,
     Integer sortOrder
 ) {

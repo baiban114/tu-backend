@@ -2,10 +2,12 @@ package com.tu.backend.externalresource.controller;
 
 import com.tu.backend.common.ApiResponse;
 import com.tu.backend.common.PageResponse;
+import com.tu.backend.externalresource.dto.CreateResourceChapterRequest;
 import com.tu.backend.externalresource.dto.CreateResourceExcerptRequest;
 import com.tu.backend.externalresource.dto.CreateResourceItemRequest;
 import com.tu.backend.externalresource.dto.RegisterResourceUrlRequest;
 import com.tu.backend.externalresource.dto.RegisterResourceUrlResult;
+import com.tu.backend.externalresource.dto.ResourceChapterDto;
 import com.tu.backend.externalresource.dto.ResourceExcerptDto;
 import com.tu.backend.externalresource.dto.ResourceItemDto;
 import com.tu.backend.externalresource.dto.UpdateResourceItemRequest;
@@ -70,6 +72,19 @@ public class ResourceItemController {
     @PostMapping
     public ApiResponse<ResourceItemDto> create(@Valid @RequestBody CreateResourceItemRequest request) {
         return ApiResponse.success(externalResourceService.createItem(request));
+    }
+
+    @GetMapping("/{id}/chapters")
+    public ApiResponse<List<ResourceChapterDto>> listChapters(@PathVariable String id) {
+        return ApiResponse.success(externalResourceService.listChapters(id));
+    }
+
+    @PostMapping("/{id}/chapters")
+    public ApiResponse<ResourceChapterDto> createChapter(
+        @PathVariable String id,
+        @Valid @RequestBody CreateResourceChapterRequest request
+    ) {
+        return ApiResponse.success(externalResourceService.createChapter(id, request));
     }
 
     @GetMapping("/{id}/excerpts")

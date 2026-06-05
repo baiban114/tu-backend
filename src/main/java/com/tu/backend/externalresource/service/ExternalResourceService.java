@@ -4,19 +4,23 @@ import com.tu.backend.common.BusinessException;
 import com.tu.backend.common.PageResponse;
 import com.tu.backend.externalresource.dto.CreateResourceItemRelationRequest;
 import com.tu.backend.externalresource.dto.CreateResourceItemRequest;
+import com.tu.backend.externalresource.dto.CreateResourceChapterRequest;
 import com.tu.backend.externalresource.dto.CreateResourceExcerptRequest;
 import com.tu.backend.externalresource.dto.CreateResourceTypeRequest;
 import com.tu.backend.externalresource.dto.CreateResourceWorkRequest;
 import com.tu.backend.externalresource.dto.MergeResourceWorksRequest;
+import com.tu.backend.externalresource.dto.ResourceChapterDto;
 import com.tu.backend.externalresource.dto.ResourceExcerptDto;
 import com.tu.backend.externalresource.dto.ResourceItemDto;
 import com.tu.backend.externalresource.dto.ResourceItemRelationDto;
 import com.tu.backend.externalresource.dto.ResourceTypeDto;
 import com.tu.backend.externalresource.dto.ResourceWorkDto;
+import com.tu.backend.externalresource.dto.UpdateResourceChapterRequest;
 import com.tu.backend.externalresource.dto.UpdateResourceExcerptRequest;
 import com.tu.backend.externalresource.dto.UpdateResourceItemRequest;
 import com.tu.backend.externalresource.dto.UpdateResourceTypeRequest;
 import com.tu.backend.externalresource.dto.UpdateResourceWorkRequest;
+import com.tu.backend.externalresource.entity.ResourceChapterEntity;
 import com.tu.backend.externalresource.entity.ResourceExcerptEntity;
 import com.tu.backend.externalresource.entity.ResourceItemEntity;
 import com.tu.backend.externalresource.entity.ResourceItemRelationEntity;
@@ -24,6 +28,7 @@ import com.tu.backend.externalresource.entity.ResourceTypeEntity;
 import com.tu.backend.externalresource.entity.ResourceWorkEntity;
 import com.tu.backend.externalresource.model.FieldSource;
 import com.tu.backend.externalresource.model.VariantKind;
+import com.tu.backend.externalresource.repository.ResourceChapterRepository;
 import com.tu.backend.externalresource.repository.ResourceExcerptRepository;
 import com.tu.backend.externalresource.repository.ResourceItemRelationRepository;
 import com.tu.backend.externalresource.repository.ResourceItemRepository;
@@ -37,9 +42,11 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -54,6 +61,7 @@ public class ExternalResourceService {
     private final ResourceWorkRepository workRepository;
     private final ResourceItemRepository itemRepository;
     private final ResourceExcerptRepository excerptRepository;
+    private final ResourceChapterRepository chapterRepository;
     private final ResourceItemRelationRepository itemRelationRepository;
     private final UrlClusterMatcherService clusterMatcherService;
 
@@ -62,6 +70,7 @@ public class ExternalResourceService {
         ResourceWorkRepository workRepository,
         ResourceItemRepository itemRepository,
         ResourceExcerptRepository excerptRepository,
+        ResourceChapterRepository chapterRepository,
         ResourceItemRelationRepository itemRelationRepository,
         UrlClusterMatcherService clusterMatcherService
     ) {
@@ -69,6 +78,7 @@ public class ExternalResourceService {
         this.workRepository = workRepository;
         this.itemRepository = itemRepository;
         this.excerptRepository = excerptRepository;
+        this.chapterRepository = chapterRepository;
         this.itemRelationRepository = itemRelationRepository;
         this.clusterMatcherService = clusterMatcherService;
     }
@@ -355,8 +365,67 @@ public class ExternalResourceService {
     @Transactional
     public void removeItem(String id) {
         excerptRepository.deleteByResourceItemId(id);
+        chapterRepository.deleteByResourceItemId(id);
         itemRelationRepository.deleteByFromItemIdOrToItemId(id, id);
         itemRepository.delete(findItem(id));
+    }
+
+    @Transactional(readOnly = true)
+    public List<ResourceChapterDto> listChapters(String resourceItemId) {
+        ResourceItemEntity item = findItem(resourceItemId);
+        ensureBookItem(item);
+        return chapterRepository.findByResourceItemIdOrderBySortOrderAscCreatedAtAsc(item.getId())
+            .stream()
+            .map(chapter -> toChapterDto(chapter, item))
+            .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public ResourceChapterDto getChapter(String id) {
+        ResourceChapterEntity chapter = findChapter(id);
+        ResourceItemEntity item = findItem(chapter.getResourceItemId());
+        ensureBookItem(item);
+        return toChapterDto(chapter, item);
+    }
+
+    @Transactional
+    public ResourceChapterDto createChapter(String resourceItemId, CreateResourceChapterRequest request) {
+        ResourceItemEntity item = findItem(resourceItemId);
+        ensureBookItem(item);
+        String parentId = blankToNull(request.parentId());
+        validateChapterParent(item.getId(), parentId, null);
+
+        ResourceChapterEntity entity = new ResourceChapterEntity();
+        entity.setId("rc-" + compactUuid());
+        entity.setResourceItemId(item.getId());
+        fillChapter(entity, parentId, request.title(), request.locator(), request.note(), request.sortOrder(), item.getId());
+        return toChapterDto(chapterRepository.save(entity), item);
+    }
+
+    @Transactional
+    public ResourceChapterDto updateChapter(String id, UpdateResourceChapterRequest request) {
+        ResourceChapterEntity entity = findChapter(id);
+        ResourceItemEntity item = findItem(entity.getResourceItemId());
+        ensureBookItem(item);
+        String parentId = blankToNull(request.parentId());
+        validateChapterParent(item.getId(), parentId, entity.getId());
+        fillChapter(entity, parentId, request.title(), request.locator(), request.note(), request.sortOrder(), item.getId());
+        return toChapterDto(chapterRepository.save(entity), item);
+    }
+
+    @Transactional
+    public void deleteChapter(String id) {
+        ResourceChapterEntity chapter = findChapter(id);
+        ResourceItemEntity item = findItem(chapter.getResourceItemId());
+        ensureBookItem(item);
+        Set<String> chapterIds = collectChapterDescendantIds(item.getId(), chapter.getId());
+        excerptRepository.findByResourceItemId(item.getId()).stream()
+            .filter(excerpt -> excerpt.getChapterId() != null && chapterIds.contains(excerpt.getChapterId()))
+            .forEach(excerpt -> {
+                excerpt.setChapterId(null);
+                excerptRepository.save(excerpt);
+            });
+        chapterRepository.deleteAllById(chapterIds);
     }
 
     @Transactional(readOnly = true)
@@ -412,7 +481,7 @@ public class ExternalResourceService {
         Page<ResourceExcerptEntity> entityPage = excerptRepository
             .findByResourceItemIdOrderBySortOrderAscCreatedAtAsc(item.getId(), pageable);
         List<ResourceExcerptDto> items = entityPage.getContent().stream()
-            .map(excerpt -> toExcerptDto(excerpt, item))
+            .map(excerpt -> toExcerptDto(excerpt, item, loadChapterTitleMap(item.getId())))
             .toList();
         return PageResponse.of(items, entityPage.getTotalElements(), safePage, safePageSize);
     }
@@ -422,7 +491,7 @@ public class ExternalResourceService {
         ResourceExcerptEntity excerpt = findExcerpt(id);
         ResourceItemEntity item = findItem(excerpt.getResourceItemId());
         ensureExcerptSupportedItem(item);
-        return toExcerptDto(excerpt, item);
+        return toExcerptDto(excerpt, item, loadChapterTitleMap(item.getId()));
     }
 
     @Transactional
@@ -433,8 +502,17 @@ public class ExternalResourceService {
         ResourceExcerptEntity entity = new ResourceExcerptEntity();
         entity.setId("re-" + compactUuid());
         entity.setResourceItemId(item.getId());
-        fillExcerpt(entity, request.title(), request.locator(), request.excerptText(), request.note(), request.sortOrder(), item.getId());
-        return toExcerptDto(excerptRepository.save(entity), item);
+        fillExcerpt(
+            entity,
+            request.title(),
+            request.chapterId(),
+            request.locator(),
+            request.excerptText(),
+            request.note(),
+            request.sortOrder(),
+            item
+        );
+        return toExcerptDto(excerptRepository.save(entity), item, loadChapterTitleMap(item.getId()));
     }
 
     @Transactional
@@ -442,8 +520,17 @@ public class ExternalResourceService {
         ResourceExcerptEntity entity = findExcerpt(id);
         ResourceItemEntity item = findItem(entity.getResourceItemId());
         ensureExcerptSupportedItem(item);
-        fillExcerpt(entity, request.title(), request.locator(), request.excerptText(), request.note(), request.sortOrder(), item.getId());
-        return toExcerptDto(excerptRepository.save(entity), item);
+        fillExcerpt(
+            entity,
+            request.title(),
+            request.chapterId(),
+            request.locator(),
+            request.excerptText(),
+            request.note(),
+            request.sortOrder(),
+            item
+        );
+        return toExcerptDto(excerptRepository.save(entity), item, loadChapterTitleMap(item.getId()));
     }
 
     @Transactional
@@ -555,6 +642,13 @@ public class ExternalResourceService {
         }
     }
 
+    private void ensureBookItem(ResourceItemEntity item) {
+        ResourceTypeEntity type = findType(item.getTypeId());
+        if (!BOOK_TYPE_CODE.equals(type.getCode())) {
+            throw new BusinessException(40000, "resource chapters are only supported for book resources");
+        }
+    }
+
     private void ensureExcerptSupportedItem(ResourceItemEntity item) {
         ResourceTypeEntity type = findType(item.getTypeId());
         String code = type.getCode();
@@ -566,17 +660,106 @@ public class ExternalResourceService {
     private void fillExcerpt(
         ResourceExcerptEntity entity,
         String title,
+        String chapterId,
         String locator,
         String excerptText,
         String note,
         Integer sortOrder,
-        String resourceItemId
+        ResourceItemEntity item
     ) {
         entity.setTitle(normalizeRequired(title, "resource excerpt title required"));
+        entity.setChapterId(resolveChapterForExcerpt(item, blankToNull(chapterId)));
         entity.setLocator(blankToNull(locator));
         entity.setExcerptText(blankToNull(excerptText));
         entity.setNote(blankToNull(note));
-        entity.setSortOrder(sortOrder == null ? nextExcerptSortOrder(resourceItemId) : Math.max(0, sortOrder));
+        entity.setSortOrder(sortOrder == null ? nextExcerptSortOrder(item.getId()) : Math.max(0, sortOrder));
+    }
+
+    private String resolveChapterForExcerpt(ResourceItemEntity item, String chapterId) {
+        if (chapterId == null) {
+            return null;
+        }
+        ResourceChapterEntity chapter = findChapter(chapterId);
+        if (!item.getId().equals(chapter.getResourceItemId())) {
+            throw new BusinessException(40000, "resource chapter does not belong to resource item");
+        }
+        ensureBookItem(item);
+        return chapter.getId();
+    }
+
+    private void fillChapter(
+        ResourceChapterEntity entity,
+        String parentId,
+        String title,
+        String locator,
+        String note,
+        Integer sortOrder,
+        String resourceItemId
+    ) {
+        entity.setParentId(parentId);
+        entity.setTitle(normalizeRequired(title, "resource chapter title required"));
+        entity.setLocator(blankToNull(locator));
+        entity.setNote(blankToNull(note));
+        entity.setSortOrder(sortOrder == null ? nextChapterSortOrder(resourceItemId, parentId) : Math.max(0, sortOrder));
+    }
+
+    private int nextChapterSortOrder(String resourceItemId, String parentId) {
+        return chapterRepository.findByResourceItemIdOrderBySortOrderAscCreatedAtAsc(resourceItemId).stream()
+            .filter(chapter -> {
+                if (parentId == null) {
+                    return chapter.getParentId() == null;
+                }
+                return parentId.equals(chapter.getParentId());
+            })
+            .map(ResourceChapterEntity::getSortOrder)
+            .filter(order -> order != null)
+            .max(Integer::compareTo)
+            .map(order -> order + 1)
+            .orElse(0);
+    }
+
+    private void validateChapterParent(String resourceItemId, String parentId, String selfId) {
+        if (parentId == null) {
+            return;
+        }
+        if (selfId != null && selfId.equals(parentId)) {
+            throw new BusinessException(40000, "resource chapter cannot be its own parent");
+        }
+        ResourceChapterEntity parent = findChapter(parentId);
+        if (!resourceItemId.equals(parent.getResourceItemId())) {
+            throw new BusinessException(40000, "resource chapter parent must belong to the same resource item");
+        }
+        if (selfId != null) {
+            Set<String> descendants = collectChapterDescendantIds(resourceItemId, selfId);
+            if (descendants.contains(parentId)) {
+                throw new BusinessException(40000, "resource chapter parent cannot be a descendant");
+            }
+        }
+    }
+
+    private Set<String> collectChapterDescendantIds(String resourceItemId, String rootId) {
+        List<ResourceChapterEntity> chapters = chapterRepository.findByResourceItemIdOrderBySortOrderAscCreatedAtAsc(resourceItemId);
+        Map<String, List<ResourceChapterEntity>> byParent = chapters.stream()
+            .collect(Collectors.groupingBy(chapter -> chapter.getParentId() == null ? "" : chapter.getParentId()));
+        Set<String> result = new HashSet<>();
+        collectChapterDescendantIdsRecursive(rootId, byParent, result);
+        return result;
+    }
+
+    private void collectChapterDescendantIdsRecursive(
+        String chapterId,
+        Map<String, List<ResourceChapterEntity>> byParent,
+        Set<String> result
+    ) {
+        result.add(chapterId);
+        for (ResourceChapterEntity child : byParent.getOrDefault(chapterId, List.of())) {
+            collectChapterDescendantIdsRecursive(child.getId(), byParent, result);
+        }
+    }
+
+    private Map<String, String> loadChapterTitleMap(String resourceItemId) {
+        return chapterRepository.findByResourceItemIdOrderBySortOrderAscCreatedAtAsc(resourceItemId).stream()
+            .collect(Collectors.toMap(ResourceChapterEntity::getId, ResourceChapterEntity::getTitle));
     }
 
     private int nextExcerptSortOrder(String resourceItemId) {
@@ -614,6 +797,14 @@ public class ExternalResourceService {
         }
         return itemRepository.findById(id.trim())
             .orElseThrow(() -> new BusinessException(40001, "resource item not found"));
+    }
+
+    private ResourceChapterEntity findChapter(String id) {
+        if (isBlank(id)) {
+            throw new BusinessException(40000, "resource chapter id required");
+        }
+        return chapterRepository.findById(id.trim())
+            .orElseThrow(() -> new BusinessException(40001, "resource chapter not found"));
     }
 
     private ResourceExcerptEntity findExcerpt(String id) {
@@ -677,11 +868,31 @@ public class ExternalResourceService {
         );
     }
 
-    private ResourceExcerptDto toExcerptDto(ResourceExcerptEntity entity, ResourceItemEntity item) {
+    private ResourceChapterDto toChapterDto(ResourceChapterEntity entity, ResourceItemEntity item) {
+        return new ResourceChapterDto(
+            entity.getId(),
+            entity.getResourceItemId(),
+            item == null ? "" : item.getTitle(),
+            entity.getParentId(),
+            entity.getTitle(),
+            entity.getLocator(),
+            entity.getNote(),
+            entity.getSortOrder()
+        );
+    }
+
+    private ResourceExcerptDto toExcerptDto(
+        ResourceExcerptEntity entity,
+        ResourceItemEntity item,
+        Map<String, String> chapterTitles
+    ) {
+        String chapterId = entity.getChapterId();
         return new ResourceExcerptDto(
             entity.getId(),
             entity.getResourceItemId(),
             item == null ? "" : item.getTitle(),
+            chapterId,
+            chapterId == null ? null : chapterTitles.get(chapterId),
             entity.getTitle(),
             entity.getLocator(),
             entity.getExcerptText(),
