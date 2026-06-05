@@ -1,6 +1,7 @@
 package com.tu.backend.externalresource.service;
 
 import com.tu.backend.common.BusinessException;
+import com.tu.backend.common.PageResponse;
 import com.tu.backend.externalresource.dto.CreateResourceItemRelationRequest;
 import com.tu.backend.externalresource.dto.CreateResourceItemRequest;
 import com.tu.backend.externalresource.dto.CreateResourceExcerptRequest;
@@ -29,6 +30,10 @@ import com.tu.backend.externalresource.repository.ResourceItemRepository;
 import com.tu.backend.externalresource.repository.ResourceTypeRepository;
 import com.tu.backend.externalresource.repository.ResourceWorkRepository;
 import com.tu.backend.externalresource.util.ExternalUrlNormalizer;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -69,11 +74,17 @@ public class ExternalResourceService {
     }
 
     @Transactional(readOnly = true)
-    public List<ResourceTypeDto> listTypes() {
-        return typeRepository.findAllByOrderByNameAscCreatedAtAsc()
-            .stream()
-            .map(this::toTypeDto)
-            .toList();
+    public PageResponse<ResourceTypeDto> listTypes(int page, int pageSize) {
+        int safePage = Math.max(0, page);
+        int safePageSize = Math.max(1, Math.min(pageSize, 200));
+        Pageable pageable = PageRequest.of(
+            safePage,
+            safePageSize,
+            Sort.by(Sort.Order.asc("name"), Sort.Order.asc("createdAt"))
+        );
+        Page<ResourceTypeEntity> entityPage = typeRepository.findAllByOrderByNameAscCreatedAtAsc(pageable);
+        List<ResourceTypeDto> items = entityPage.getContent().stream().map(this::toTypeDto).toList();
+        return PageResponse.of(items, entityPage.getTotalElements(), safePage, safePageSize);
     }
 
     @Transactional
@@ -130,12 +141,22 @@ public class ExternalResourceService {
     }
 
     @Transactional(readOnly = true)
-    public List<ResourceWorkDto> listWorks(String typeId) {
+    public PageResponse<ResourceWorkDto> listWorks(String typeId, int page, int pageSize) {
         Map<String, ResourceTypeEntity> types = loadTypeMap();
-        List<ResourceWorkEntity> works = isBlank(typeId)
-            ? workRepository.findAllByOrderByUpdatedAtDescCreatedAtDesc()
-            : workRepository.findByTypeIdOrderByUpdatedAtDescCreatedAtDesc(typeId.trim());
-        return works.stream().map(work -> toWorkDto(work, types.get(work.getTypeId()))).toList();
+        int safePage = Math.max(0, page);
+        int safePageSize = Math.max(1, Math.min(pageSize, 200));
+        Pageable pageable = PageRequest.of(
+            safePage,
+            safePageSize,
+            Sort.by(Sort.Order.desc("updatedAt"), Sort.Order.desc("createdAt"))
+        );
+        Page<ResourceWorkEntity> entityPage = isBlank(typeId)
+            ? workRepository.findAllByOrderByUpdatedAtDescCreatedAtDesc(pageable)
+            : workRepository.findByTypeIdOrderByUpdatedAtDescCreatedAtDesc(typeId.trim(), pageable);
+        List<ResourceWorkDto> items = entityPage.getContent().stream()
+            .map(work -> toWorkDto(work, types.get(work.getTypeId())))
+            .toList();
+        return PageResponse.of(items, entityPage.getTotalElements(), safePage, safePageSize);
     }
 
     @Transactional
@@ -245,30 +266,45 @@ public class ExternalResourceService {
     }
 
     @Transactional(readOnly = true)
-    public List<ResourceItemDto> listItems(String typeId, String workId, String identityValue) {
+    public PageResponse<ResourceItemDto> listItems(String typeId, String workId, String identityValue, int page, int pageSize) {
         Map<String, ResourceTypeEntity> types = loadTypeMap();
         Map<String, ResourceWorkEntity> works = loadWorkMap();
         if (!isBlank(identityValue)) {
             if (isBlank(typeId)) {
                 throw new BusinessException(40000, "typeId is required when identityValue is used");
             }
-            return itemRepository.findByTypeIdAndIdentityValue(typeId.trim(), identityValue.trim())
+            List<ResourceItemDto> matches = itemRepository.findByTypeIdAndIdentityValue(typeId.trim(), identityValue.trim())
                 .stream()
                 .map(item -> toItemDto(item, types.get(item.getTypeId()), works.get(item.getWorkId())))
                 .toList();
+            return PageResponse.of(matches, matches.size(), 0, Math.max(1, matches.size()));
         }
 
-        List<ResourceItemEntity> items;
+        int safePage = Math.max(0, page);
+        int safePageSize = Math.max(1, Math.min(pageSize, 200));
+        Pageable pageable = PageRequest.of(
+            safePage,
+            safePageSize,
+            Sort.by(Sort.Order.desc("updatedAt"), Sort.Order.desc("createdAt"))
+        );
+        Page<ResourceItemEntity> entityPage;
         if (!isBlank(typeId) && !isBlank(workId)) {
-            items = itemRepository.findByTypeIdAndWorkIdOrderByUpdatedAtDescCreatedAtDesc(typeId.trim(), workId.trim());
+            entityPage = itemRepository.findByTypeIdAndWorkIdOrderByUpdatedAtDescCreatedAtDesc(
+                typeId.trim(),
+                workId.trim(),
+                pageable
+            );
         } else if (!isBlank(typeId)) {
-            items = itemRepository.findByTypeIdOrderByUpdatedAtDescCreatedAtDesc(typeId.trim());
+            entityPage = itemRepository.findByTypeIdOrderByUpdatedAtDescCreatedAtDesc(typeId.trim(), pageable);
         } else if (!isBlank(workId)) {
-            items = itemRepository.findByWorkIdOrderByUpdatedAtDescCreatedAtDesc(workId.trim());
+            entityPage = itemRepository.findByWorkIdOrderByUpdatedAtDescCreatedAtDesc(workId.trim(), pageable);
         } else {
-            items = itemRepository.findAllByOrderByUpdatedAtDescCreatedAtDesc();
+            entityPage = itemRepository.findAllByOrderByUpdatedAtDescCreatedAtDesc(pageable);
         }
-        return items.stream().map(item -> toItemDto(item, types.get(item.getTypeId()), works.get(item.getWorkId()))).toList();
+        List<ResourceItemDto> items = entityPage.getContent().stream()
+            .map(item -> toItemDto(item, types.get(item.getTypeId()), works.get(item.getWorkId())))
+            .toList();
+        return PageResponse.of(items, entityPage.getTotalElements(), safePage, safePageSize);
     }
 
     @Transactional(readOnly = true)
@@ -363,13 +399,22 @@ public class ExternalResourceService {
     }
 
     @Transactional(readOnly = true)
-    public List<ResourceExcerptDto> listExcerpts(String resourceItemId) {
+    public PageResponse<ResourceExcerptDto> listExcerpts(String resourceItemId, int page, int pageSize) {
         ResourceItemEntity item = findItem(resourceItemId);
         ensureExcerptSupportedItem(item);
-        return excerptRepository.findByResourceItemIdOrderBySortOrderAscCreatedAtAsc(item.getId())
-            .stream()
+        int safePage = Math.max(0, page);
+        int safePageSize = Math.max(1, Math.min(pageSize, 200));
+        Pageable pageable = PageRequest.of(
+            safePage,
+            safePageSize,
+            Sort.by(Sort.Order.asc("sortOrder"), Sort.Order.asc("createdAt"))
+        );
+        Page<ResourceExcerptEntity> entityPage = excerptRepository
+            .findByResourceItemIdOrderBySortOrderAscCreatedAtAsc(item.getId(), pageable);
+        List<ResourceExcerptDto> items = entityPage.getContent().stream()
             .map(excerpt -> toExcerptDto(excerpt, item))
             .toList();
+        return PageResponse.of(items, entityPage.getTotalElements(), safePage, safePageSize);
     }
 
     @Transactional(readOnly = true)

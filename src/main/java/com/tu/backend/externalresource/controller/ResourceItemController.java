@@ -1,6 +1,7 @@
 package com.tu.backend.externalresource.controller;
 
 import com.tu.backend.common.ApiResponse;
+import com.tu.backend.common.PageResponse;
 import com.tu.backend.externalresource.dto.CreateResourceExcerptRequest;
 import com.tu.backend.externalresource.dto.CreateResourceItemRequest;
 import com.tu.backend.externalresource.dto.RegisterResourceUrlRequest;
@@ -51,12 +52,14 @@ public class ResourceItemController {
     }
 
     @GetMapping
-    public ApiResponse<List<ResourceItemDto>> list(
+    public ApiResponse<PageResponse<ResourceItemDto>> list(
         @RequestParam(required = false) String typeId,
         @RequestParam(required = false) String workId,
-        @RequestParam(required = false) String identityValue
+        @RequestParam(required = false) String identityValue,
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(name = "pageSize", defaultValue = "10") int pageSize
     ) {
-        return ApiResponse.success(externalResourceService.listItems(typeId, workId, identityValue));
+        return ApiResponse.success(externalResourceService.listItems(typeId, workId, identityValue, page, pageSize));
     }
 
     @GetMapping("/{id}")
@@ -70,8 +73,12 @@ public class ResourceItemController {
     }
 
     @GetMapping("/{id}/excerpts")
-    public ApiResponse<List<ResourceExcerptDto>> listExcerpts(@PathVariable String id) {
-        return ApiResponse.success(externalResourceService.listExcerpts(id));
+    public ApiResponse<PageResponse<ResourceExcerptDto>> listExcerpts(
+        @PathVariable String id,
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(name = "pageSize", defaultValue = "10") int pageSize
+    ) {
+        return ApiResponse.success(externalResourceService.listExcerpts(id, page, pageSize));
     }
 
     @PostMapping("/{id}/excerpts")

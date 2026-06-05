@@ -25,7 +25,7 @@ public class OrphanedAnnotationController {
     @GetMapping
     public ApiResponse<PageResponse<OrphanedAnnotationDto>> listOrphaned(
         @RequestParam(defaultValue = "0") int page,
-        @RequestParam(name = "pageSize", defaultValue = "50") int pageSize
+        @RequestParam(name = "pageSize", defaultValue = "10") int pageSize
     ) {
         return ApiResponse.success(orphanedAnnotationService.listOrphaned(page, pageSize));
     }

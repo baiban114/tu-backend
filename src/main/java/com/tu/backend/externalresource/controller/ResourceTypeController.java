@@ -1,6 +1,7 @@
 package com.tu.backend.externalresource.controller;
 
 import com.tu.backend.common.ApiResponse;
+import com.tu.backend.common.PageResponse;
 import com.tu.backend.externalresource.dto.CreateResourceTypeRequest;
 import com.tu.backend.externalresource.dto.ResourceTypeDto;
 import com.tu.backend.externalresource.dto.UpdateResourceTypeRequest;
@@ -13,9 +14,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/resource-types")
@@ -28,8 +28,11 @@ public class ResourceTypeController {
     }
 
     @GetMapping
-    public ApiResponse<List<ResourceTypeDto>> list() {
-        return ApiResponse.success(externalResourceService.listTypes());
+    public ApiResponse<PageResponse<ResourceTypeDto>> list(
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(name = "pageSize", defaultValue = "10") int pageSize
+    ) {
+        return ApiResponse.success(externalResourceService.listTypes(page, pageSize));
     }
 
     @PostMapping

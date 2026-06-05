@@ -25,7 +25,7 @@ public class AiAgentRunLogController {
         @RequestParam(required = false) String taskType,
         @RequestParam(required = false) String status,
         @RequestParam(required = false, defaultValue = "0") int page,
-        @RequestParam(required = false, defaultValue = "50") int pageSize
+        @RequestParam(required = false, defaultValue = "10") int pageSize
     ) {
         return ApiResponse.success(service.list(taskType, status, page, pageSize));
     }

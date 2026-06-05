@@ -1,6 +1,7 @@
 package com.tu.backend.externalresource.controller;
 
 import com.tu.backend.common.ApiResponse;
+import com.tu.backend.common.PageResponse;
 import com.tu.backend.externalresource.dto.CreateResourceWorkRequest;
 import com.tu.backend.externalresource.dto.MergeResourceWorksRequest;
 import com.tu.backend.externalresource.dto.ResourceWorkDto;
@@ -17,8 +18,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
-
 @RestController
 @RequestMapping("/api/resource-works")
 public class ResourceWorkController {
@@ -30,8 +29,12 @@ public class ResourceWorkController {
     }
 
     @GetMapping
-    public ApiResponse<List<ResourceWorkDto>> list(@RequestParam(required = false) String typeId) {
-        return ApiResponse.success(externalResourceService.listWorks(typeId));
+    public ApiResponse<PageResponse<ResourceWorkDto>> list(
+        @RequestParam(required = false) String typeId,
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(name = "pageSize", defaultValue = "10") int pageSize
+    ) {
+        return ApiResponse.success(externalResourceService.listWorks(typeId, page, pageSize));
     }
 
     @PostMapping

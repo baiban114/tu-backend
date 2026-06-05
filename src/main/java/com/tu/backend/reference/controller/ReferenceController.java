@@ -33,7 +33,7 @@ public class ReferenceController {
         @RequestParam(required = false) String status,
         @RequestParam(required = false) String q,
         @RequestParam(required = false, defaultValue = "0") int page,
-        @RequestParam(required = false, defaultValue = "50") int pageSize
+        @RequestParam(required = false, defaultValue = "10") int pageSize
     ) {
         return ApiResponse.success(referenceService.listReferences(category, pageId, resourceItemId, status, q, page, pageSize));
     }

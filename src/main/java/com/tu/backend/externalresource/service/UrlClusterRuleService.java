@@ -1,11 +1,16 @@
 package com.tu.backend.externalresource.service;
 
 import com.tu.backend.common.BusinessException;
+import com.tu.backend.common.PageResponse;
 import com.tu.backend.externalresource.dto.CreateUrlClusterRuleRequest;
 import com.tu.backend.externalresource.dto.UpdateUrlClusterRuleRequest;
 import com.tu.backend.externalresource.dto.UrlClusterRuleDto;
 import com.tu.backend.externalresource.entity.UrlClusterRuleEntity;
 import com.tu.backend.externalresource.repository.UrlClusterRuleRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,8 +29,17 @@ public class UrlClusterRuleService {
     }
 
     @Transactional(readOnly = true)
-    public List<UrlClusterRuleDto> listRules() {
-        return ruleRepository.findAll().stream().map(this::toDto).toList();
+    public PageResponse<UrlClusterRuleDto> listRules(int page, int pageSize) {
+        int safePage = Math.max(0, page);
+        int safePageSize = Math.max(1, Math.min(pageSize, 200));
+        Pageable pageable = PageRequest.of(
+            safePage,
+            safePageSize,
+            Sort.by(Sort.Order.desc("priority"), Sort.Order.asc("domain"))
+        );
+        Page<UrlClusterRuleEntity> entityPage = ruleRepository.findAll(pageable);
+        List<UrlClusterRuleDto> items = entityPage.getContent().stream().map(this::toDto).toList();
+        return PageResponse.of(items, entityPage.getTotalElements(), safePage, safePageSize);
     }
 
     @Transactional

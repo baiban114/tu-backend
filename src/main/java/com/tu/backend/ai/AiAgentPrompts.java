@@ -7,3 +7,4 @@ public final class AiAgentPrompts {
     private AiAgentPrompts() {
     }
 }
+

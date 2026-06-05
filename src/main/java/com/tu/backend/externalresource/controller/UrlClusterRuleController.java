@@ -1,6 +1,7 @@
 package com.tu.backend.externalresource.controller;
 
 import com.tu.backend.common.ApiResponse;
+import com.tu.backend.common.PageResponse;
 import com.tu.backend.externalresource.dto.CreateUrlClusterRuleRequest;
 import com.tu.backend.externalresource.dto.UpdateUrlClusterRuleRequest;
 import com.tu.backend.externalresource.dto.UrlClusterRuleDto;
@@ -13,9 +14,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/url-cluster-rules")
@@ -28,8 +28,11 @@ public class UrlClusterRuleController {
     }
 
     @GetMapping
-    public ApiResponse<List<UrlClusterRuleDto>> list() {
-        return ApiResponse.success(urlClusterRuleService.listRules());
+    public ApiResponse<PageResponse<UrlClusterRuleDto>> list(
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(name = "pageSize", defaultValue = "10") int pageSize
+    ) {
+        return ApiResponse.success(urlClusterRuleService.listRules(page, pageSize));
     }
 
     @PostMapping
