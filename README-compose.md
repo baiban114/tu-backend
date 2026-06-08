@@ -5,7 +5,7 @@ The compose files are split by responsibility.
 ## Files
 
 - `docker-compose.yml`: application services only (`tu-backend`, `tu-gateway`, `tu-integration-service`, `tu-rag-service`).
-- `docker-compose.infra.yml`: shared infrastructure and external dependencies (`nacos`, databases, `qdrant`, `kaneo`).
+- `docker-compose.infra.yml`: shared infrastructure and external dependencies (`nacos`, databases, `qdrant`, `elasticsearch`, `kaneo`).
 - `docker-compose.dev.yml`: local development overrides that wire app services to the infra service names.
 
 ## Local All-In-One
@@ -44,3 +44,11 @@ docker compose -f docker-compose.infra.yml up -d kaneo-postgres kaneo
 ```
 
 If GHCR is slow, use an external Kaneo instance and configure it from the `/tasks` page.
+
+# 运行笔记
+只启动 Elasticsearch
+在 tu-backend 目录下执行：
+
+cd d:\project\tu\tu-backend
+docker compose -f docker-compose.infra.yml up -d elasticsearch
+首次运行会自动拉镜像并创建 elasticsearch-data 卷。

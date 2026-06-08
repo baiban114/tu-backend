@@ -34,6 +34,13 @@ RAG service:
 - FastAPI internal service: `http://localhost:19080`
 - Qdrant: `http://localhost:6333`
 
+Elasticsearch (page full-text search):
+
+- `http://localhost:9200`
+- Backend: `GET /api/search?q=&limit=`, `POST /api/search/reindex`
+- Env: `SEARCH_ENABLED=true`, `ELASTICSEARCH_URIS=http://elasticsearch:9200`, `SEARCH_INDEX=tu_pages`
+- Start infra only: `docker compose -f docker-compose.infra.yml up -d elasticsearch`
+
 MySQL:
 
 - `localhost:3306`

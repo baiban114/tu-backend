@@ -28,6 +28,8 @@ spring:
       audio:
         speech: none
         transcription: none
+  elasticsearch:
+    uris: ${ELASTICSEARCH_URIS:http://localhost:9200}
 
 server:
   port: 8080
@@ -42,6 +44,15 @@ rag:
 
 integration:
   service-url: ${INTEGRATION_SERVICE_URL:http://localhost:18100}
+
+search:
+  enabled: ${SEARCH_ENABLED:true}
+  index: ${SEARCH_INDEX:tu_pages}
+  elasticsearch-api-version: ${SEARCH_ES_API_VERSION:8}
+
+index:
+  flush-interval-ms: ${INDEX_FLUSH_INTERVAL_MS:300000}
+  fingerprint-enabled: ${INDEX_FINGERPRINT_ENABLED:true}
 
 secret:
   # Development fallback key. Override TU_SECRET_ENCRYPTION_KEY in production.

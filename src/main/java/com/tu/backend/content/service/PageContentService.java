@@ -13,7 +13,7 @@ import com.tu.backend.content.repository.PageContentRepository;
 import com.tu.backend.page.entity.PageEntity;
 import com.tu.backend.page.repository.PageRepository;
 import com.tu.backend.reference.service.ReferenceService;
-import com.tu.backend.rag.RagIndexService;
+import com.tu.backend.index.PageIndexCoordinator;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,20 +31,20 @@ public class PageContentService {
     private final PageContentRepository pageContentRepository;
     private final PageRepository pageRepository;
     private final ObjectMapper objectMapper;
-    private final RagIndexService ragIndexService;
+    private final PageIndexCoordinator pageIndexCoordinator;
     private final ReferenceService referenceService;
 
     public PageContentService(
         PageContentRepository pageContentRepository,
         PageRepository pageRepository,
         ObjectMapper objectMapper,
-        RagIndexService ragIndexService,
+        PageIndexCoordinator pageIndexCoordinator,
         ReferenceService referenceService
     ) {
         this.pageContentRepository = pageContentRepository;
         this.pageRepository = pageRepository;
         this.objectMapper = objectMapper;
-        this.ragIndexService = ragIndexService;
+        this.pageIndexCoordinator = pageIndexCoordinator;
         this.referenceService = referenceService;
     }
 
@@ -70,7 +70,7 @@ public class PageContentService {
 
         PageContentEntity saved = pageContentRepository.save(entity);
         referenceService.rebuildPageReferences(saved.getPageId(), saved.getBlocksJson());
-        ragIndexService.indexPageBestEffort(saved.getPageId());
+        pageIndexCoordinator.onPageContentChanged(saved.getPageId());
         return toPageContentDto(saved.getPageId(), deserializeBlocks(saved.getBlocksJson()));
     }
 

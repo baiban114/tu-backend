@@ -1,6 +1,7 @@
 package com.tu.backend.rag;
 
 import com.tu.backend.common.ApiResponse;
+import com.tu.backend.index.PageIndexCoordinator;
 import com.tu.backend.rag.dto.RagQueryRequest;
 import com.tu.backend.rag.dto.RagQueryResponse;
 import jakarta.validation.Valid;
@@ -15,9 +16,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class RagController {
 
     private final RagIndexService ragIndexService;
+    private final PageIndexCoordinator pageIndexCoordinator;
 
-    public RagController(RagIndexService ragIndexService) {
+    public RagController(RagIndexService ragIndexService, PageIndexCoordinator pageIndexCoordinator) {
         this.ragIndexService = ragIndexService;
+        this.pageIndexCoordinator = pageIndexCoordinator;
     }
 
     @PostMapping("/query")
@@ -27,13 +30,13 @@ public class RagController {
 
     @PostMapping("/reindex/page/{pageId}")
     public ApiResponse<Void> reindexPage(@PathVariable String pageId) {
-        ragIndexService.reindexPage(pageId);
+        pageIndexCoordinator.indexPageNow(pageId);
         return ApiResponse.success();
     }
 
     @PostMapping("/reindex/kb/{kbId}")
     public ApiResponse<Void> reindexKnowledgeBase(@PathVariable String kbId) {
-        ragIndexService.reindexKnowledgeBase(kbId);
+        pageIndexCoordinator.reindexKnowledgeBaseNow(kbId);
         return ApiResponse.success();
     }
 }

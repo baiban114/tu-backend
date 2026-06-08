@@ -9,6 +9,8 @@ services:
         condition: service_started
       tu-integration-service:
         condition: service_started
+      elasticsearch:
+        condition: service_healthy
     environment:
       NACOS_SERVER_ADDR: nacos:8848
       SPRING_PROFILES_ACTIVE: mysql
@@ -19,6 +21,8 @@ services:
       RAG_SERVICE_URL: http://tu-rag-service:19080
       QDRANT_URL: http://qdrant:6333
       INTEGRATION_SERVICE_URL: http://tu-integration-service:18100
+      ELASTICSEARCH_URIS: http://elasticsearch:9200
+      SEARCH_ENABLED: "true"
 
   tu-gateway:
     depends_on:

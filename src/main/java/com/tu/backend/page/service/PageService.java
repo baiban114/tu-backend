@@ -9,7 +9,7 @@ import com.tu.backend.page.dto.PageItemDto;
 import com.tu.backend.page.dto.UpdatePageRequest;
 import com.tu.backend.page.entity.PageEntity;
 import com.tu.backend.page.repository.PageRepository;
-import com.tu.backend.rag.RagIndexService;
+import com.tu.backend.index.PageIndexCoordinator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -32,20 +32,20 @@ public class PageService {
     private final PageRepository pageRepository;
     private final KnowledgeBaseRepository knowledgeBaseRepository;
     private final PageContentService pageContentService;
-    private final RagIndexService ragIndexService;
+    private final PageIndexCoordinator pageIndexCoordinator;
     private final OrphanedAnnotationService orphanedAnnotationService;
 
     public PageService(
         PageRepository pageRepository,
         KnowledgeBaseRepository knowledgeBaseRepository,
         PageContentService pageContentService,
-        RagIndexService ragIndexService,
+        PageIndexCoordinator pageIndexCoordinator,
         OrphanedAnnotationService orphanedAnnotationService
     ) {
         this.pageRepository = pageRepository;
         this.knowledgeBaseRepository = knowledgeBaseRepository;
         this.pageContentService = pageContentService;
-        this.ragIndexService = ragIndexService;
+        this.pageIndexCoordinator = pageIndexCoordinator;
         this.orphanedAnnotationService = orphanedAnnotationService;
     }
 
@@ -79,9 +79,12 @@ public class PageService {
 
         boolean changed = false;
 
+        boolean titleChanged = false;
+
         if (request.isTitlePresent()) {
             entity.setTitle(normalizeTitle(request.getTitle()));
             changed = true;
+            titleChanged = true;
         }
 
         if (request.isParentIdPresent() || request.isOrderPresent()) {
@@ -98,7 +101,11 @@ public class PageService {
             throw new BusinessException(40000, "no fields to update");
         }
 
-        return toDto(pageRepository.save(entity));
+        PageItemDto saved = toDto(pageRepository.save(entity));
+        if (titleChanged) {
+            pageIndexCoordinator.onPageContentChanged(id);
+        }
+        return saved;
     }
 
     @Transactional
@@ -132,7 +139,7 @@ public class PageService {
         }
         pageContentService.deleteByPageIds(idsToDelete);
         pageRepository.deleteAllById(idsToDelete);
-        ragIndexService.deletePagesBestEffort(root.getKbId(), idsToDelete);
+        pageIndexCoordinator.deletePages(root.getKbId(), idsToDelete);
     }
 
     public void deleteByKnowledgeBaseId(String kbId) {
@@ -146,7 +153,7 @@ public class PageService {
         }
         pageContentService.deleteByPageIds(pageIds);
         pageRepository.deleteByKbId(kbId);
-        ragIndexService.deleteKnowledgeBaseBestEffort(kbId);
+        pageIndexCoordinator.deleteKnowledgeBase(kbId);
     }
 
     private void ensureKnowledgeBaseExists(String kbId) {

@@ -15,6 +15,9 @@ services:
       RAG_SERVICE_URL: ${RAG_SERVICE_URL}
       RAG_ENABLED: ${RAG_ENABLED:-true}
       INTEGRATION_SERVICE_URL: ${INTEGRATION_SERVICE_URL:-http://tu-integration-service:18100}
+      SEARCH_ENABLED: ${SEARCH_ENABLED:-true}
+      ELASTICSEARCH_URIS: ${ELASTICSEARCH_URIS:-http://elasticsearch:9200}
+      SEARCH_INDEX: ${SEARCH_INDEX:-tu_pages}
     ports:
       - "${TU_BACKEND_PORT:-18081}:8080"
 
