@@ -86,7 +86,7 @@ public class OrphanedAnnotationService {
     }
 
     private void extractAnnotationsFromBlock(JsonNode block, String pageId, String pageTitle, List<AnnotationEntity> result) {
-        if (!(block instanceof com.fasterxml.jackson.databind.node.ObjectNode obj)) {
+        if (!(block instanceof com.fasterxml.jackson.databind.node.ObjectNode)) {
             return;
         }
 

@@ -193,10 +193,10 @@ public class BlockService {
     }
 
     private ObjectNode findBlockRecursive(JsonNode node, String blockId) {
-        if (!(node instanceof ObjectNode objectNode)) {
+        if (!(node instanceof ObjectNode)) {
             return null;
         }
-
+        ObjectNode objectNode = (ObjectNode) node;
         JsonNode idNode = objectNode.get("id");
         if (idNode != null && blockId.equals(idNode.asText())) {
             return objectNode;

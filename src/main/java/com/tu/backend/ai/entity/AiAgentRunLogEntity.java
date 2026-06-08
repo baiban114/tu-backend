@@ -39,27 +39,27 @@ public class AiAgentRunLogEntity {
     private Long durationMs;
 
     @Lob
-    @Column(name = "system_prompt")
+    @Column(name = "system_prompt", columnDefinition = "text")
     private String systemPrompt;
 
     @Lob
-    @Column(name = "user_prompt")
+    @Column(name = "user_prompt", columnDefinition = "text")
     private String userPrompt;
 
     @Lob
-    @Column(name = "request_body_json")
+    @Column(name = "request_body_json", columnDefinition = "text")
     private String requestBodyJson;
 
     @Lob
-    @Column(name = "raw_response_body")
+    @Column(name = "raw_response_body", columnDefinition = "text")
     private String rawResponseBody;
 
     @Lob
-    @Column(name = "output_text")
+    @Column(name = "output_text", columnDefinition = "text")
     private String outputText;
 
     @Lob
-    @Column(name = "error_message")
+    @Column(name = "error_message", columnDefinition = "text")
     private String errorMessage;
 
     @Column(name = "prompt_tokens")

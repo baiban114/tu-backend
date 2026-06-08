@@ -409,9 +409,10 @@ public class ReferenceService {
         List<ExternalReferenceOccurrenceEntity> externalRecords,
         Map<ExternalReferenceKey, ExternalReferenceOccurrenceEntity> existingExternalMap
     ) {
-        if (!(graphData instanceof JsonNode node) || !node.isObject()) {
+        if (!(graphData instanceof JsonNode) || !((JsonNode) graphData).isObject()) {
             return;
         }
+        JsonNode node = (JsonNode) graphData;
         JsonNode nodes = node.get("nodes");
         if (nodes instanceof ArrayNode nodeArray) {
             for (int index = 0; index < nodeArray.size(); index += 1) {
@@ -487,14 +488,16 @@ public class ReferenceService {
             return;
         }
         JsonNode rows = tableData.get("rows");
-        if (!(rows instanceof ArrayNode rowArray)) {
+        if (!(rows instanceof ArrayNode)) {
             return;
         }
+        ArrayNode rowArray = (ArrayNode) rows;
         for (int row = 0; row < rowArray.size(); row += 1) {
             JsonNode rowNode = rowArray.get(row);
-            if (!(rowNode instanceof ArrayNode cellArray)) {
+            if (!(rowNode instanceof ArrayNode)) {
                 continue;
             }
+            ArrayNode cellArray = (ArrayNode) rowNode;
             for (int column = 0; column < cellArray.size(); column += 1) {
                 extractExternalReferences(
                     pageId,
@@ -800,13 +803,15 @@ public class ReferenceService {
         String normalizedQuery
     ) {
         JsonNode metadata = block.node().get("metadata");
-        if (!(metadata instanceof JsonNode metaNode) || !metaNode.isObject()) {
+        if (!(metadata instanceof JsonNode) || !((JsonNode) metadata).isObject()) {
             return;
         }
+        JsonNode metaNode = (JsonNode) metadata;
         JsonNode annotations = metaNode.get("annotations");
-        if (!(annotations instanceof ArrayNode annArray)) {
+        if (!(annotations instanceof ArrayNode)) {
             return;
         }
+        ArrayNode annArray = (ArrayNode) annotations;
         for (JsonNode ann : annArray) {
             ReferenceItemDto dto = toAnnotationDto(ann, pageId, pageTitle, block);
             if (matches(dto, normalizedPageId, normalizedResourceItemId, normalizedStatus, normalizedQuery)) {
