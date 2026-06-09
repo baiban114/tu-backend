@@ -339,6 +339,14 @@ public class ReferenceService {
             existingResourceMap
         );
         extractExternalReferences(pageId, blockId, blockType, blockPath, text(block.get("content")), externalRecords, existingExternalMap);
+        extractHeadingSourceReferences(
+            pageId,
+            blockId,
+            blockPath,
+            text(block.get("content")),
+            externalResourceRecords,
+            existingResourceMap
+        );
         extractTableReferences(pageId, blockId, blockType, blockPath, block.get("tableData"), externalRecords, existingExternalMap);
         extractGraphReferences(pageId, blockId, blockType, blockPath, block.get("graphData"), internalRecords, externalRecords, existingExternalMap);
 
@@ -397,6 +405,63 @@ public class ReferenceService {
         entity.setResourceItemId(resourceItemId);
         entity.setResourceExcerptId(blankToNull(text(data.get("resourceExcerptId"))));
         externalResourceRecords.add(entity);
+    }
+
+    private static final Pattern HEADING_SOURCE_PATTERN = Pattern.compile(
+        "<!--tu:heading-source\\s+([^>]+)-->",
+        Pattern.MULTILINE
+    );
+    private static final Pattern HEADING_SOURCE_ATTR_PATTERN = Pattern.compile("(\\w[\\w-]*)=\"([^\"]*)\"");
+
+    private void extractHeadingSourceReferences(
+        String pageId,
+        String blockId,
+        String blockPath,
+        String content,
+        List<ExternalResourceReferenceEntity> externalResourceRecords,
+        Map<ExternalResourceReferenceKey, ExternalResourceReferenceEntity> existingResourceMap
+    ) {
+        if (content == null || content.isBlank()) {
+            return;
+        }
+        Matcher matcher = HEADING_SOURCE_PATTERN.matcher(content);
+        while (matcher.find()) {
+            Map<String, String> attrs = parseHeadingSourceAttrs(matcher.group(1));
+            String headingBlockId = attrs.get("id");
+            String resourceItemId = attrs.get("item");
+            String resourceExcerptId = attrs.get("excerpt");
+            if (headingBlockId == null || headingBlockId.isBlank()
+                || resourceItemId == null || resourceItemId.isBlank()
+                || resourceExcerptId == null || resourceExcerptId.isBlank()) {
+                continue;
+            }
+            String sourceLocator = "content:heading:" + headingBlockId;
+            ExternalResourceReferenceKey key = new ExternalResourceReferenceKey(
+                pageId,
+                blockId,
+                "headingSource",
+                sourceLocator
+            );
+            ExternalResourceReferenceEntity existing = existingResourceMap.get(key);
+            ExternalResourceReferenceEntity entity = new ExternalResourceReferenceEntity();
+            entity.setId(existing == null ? newId("err") : existing.getId());
+            entity.setPageId(pageId);
+            entity.setBlockId(blockId);
+            entity.setSourceKind("headingSource");
+            entity.setSourceLocator(sourceLocator);
+            entity.setResourceItemId(resourceItemId);
+            entity.setResourceExcerptId(resourceExcerptId);
+            externalResourceRecords.add(entity);
+        }
+    }
+
+    private Map<String, String> parseHeadingSourceAttrs(String attrsStr) {
+        Map<String, String> attrs = new LinkedHashMap<>();
+        Matcher matcher = HEADING_SOURCE_ATTR_PATTERN.matcher(attrsStr);
+        while (matcher.find()) {
+            attrs.put(matcher.group(1), matcher.group(2));
+        }
+        return attrs;
     }
 
     private void extractGraphReferences(
@@ -756,6 +821,9 @@ public class ReferenceService {
         String excerptNote = excerpt == null ? text(snapshot == null ? null : snapshot.get("excerptNote")) : excerpt.getNote();
         String url = resourceItem == null ? text(snapshot == null ? null : snapshot.get("sourceUrl")) : resourceItem.getSourceUrl();
         String status = resourceItem == null || (entity.getResourceExcerptId() != null && excerpt == null) ? "broken" : "bound";
+        String sourceBlockType = "headingSource".equals(entity.getSourceKind())
+            ? "heading"
+            : (sourceBlock == null ? entity.getSourceKind() : sourceBlock.type());
 
         return new ReferenceItemDto(
             entity.getId(),
@@ -765,7 +833,7 @@ public class ReferenceService {
                 entity.getPageId(),
                 sourcePage == null ? entity.getPageId() : sourcePage.getTitle(),
                 entity.getBlockId(),
-                sourceBlock == null ? entity.getSourceKind() : sourceBlock.type(),
+                sourceBlockType,
                 entity.getSourceKind(),
                 entity.getSourceLocator()
             ),
