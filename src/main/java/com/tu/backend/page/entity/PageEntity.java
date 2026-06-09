@@ -29,6 +29,9 @@ public class PageEntity {
     @Column(name = "sort_order", nullable = false)
     private Integer sortOrder;
 
+    @Column(name = "page_type", length = 32, nullable = false)
+    private String pageType = "document";
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -85,6 +88,14 @@ public class PageEntity {
 
     public void setSortOrder(Integer sortOrder) {
         this.sortOrder = sortOrder;
+    }
+
+    public String getPageType() {
+        return pageType;
+    }
+
+    public void setPageType(String pageType) {
+        this.pageType = pageType;
     }
 
     public LocalDateTime getCreatedAt() {

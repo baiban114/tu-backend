@@ -67,6 +67,7 @@ public class PageService {
         entity.setKbId(request.kbId());
         entity.setParentId(parentId);
         entity.setTitle(normalizeTitle(request.title()));
+        entity.setPageType(normalizePageType(request.pageType()));
         entity.setSortOrder(nextOrder(request.kbId(), parentId));
 
         return toDto(pageRepository.save(entity));
@@ -266,6 +267,20 @@ public class PageService {
         return title.trim();
     }
 
+    private String normalizePageType(String pageType) {
+        if (pageType == null || pageType.isBlank()) {
+            return "document";
+        }
+        String normalized = pageType.trim().toLowerCase();
+        if ("mindmap".equals(normalized)) {
+            return "mindmap";
+        }
+        if ("x6board".equals(normalized)) {
+            return "x6board";
+        }
+        return "document";
+    }
+
     private String normalizeParentId(String parentId) {
         if (parentId == null || parentId.isBlank()) {
             return null;
@@ -314,6 +329,7 @@ public class PageService {
         dto.setParentId(entity.getParentId());
         dto.setTitle(entity.getTitle());
         dto.setOrder(entity.getSortOrder());
+        dto.setPageType(entity.getPageType() != null ? entity.getPageType() : "document");
         return dto;
     }
 }

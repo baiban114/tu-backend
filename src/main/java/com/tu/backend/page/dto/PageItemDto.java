@@ -10,6 +10,7 @@ public class PageItemDto {
     private String parentId;
     private String title;
     private Integer order;
+    private String pageType = "document";
     private List<PageItemDto> children = new ArrayList<>();
 
     public String getId() {
@@ -50,6 +51,14 @@ public class PageItemDto {
 
     public void setOrder(Integer order) {
         this.order = order;
+    }
+
+    public String getPageType() {
+        return pageType;
+    }
+
+    public void setPageType(String pageType) {
+        this.pageType = pageType;
     }
 
     public List<PageItemDto> getChildren() {
