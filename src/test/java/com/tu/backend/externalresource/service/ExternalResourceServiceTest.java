@@ -9,16 +9,17 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tu.backend.common.BusinessException;
+import com.tu.backend.contenttree.entity.ContentTreeNodeEntity;
+import com.tu.backend.contenttree.entity.ScopeType;
+import com.tu.backend.contenttree.service.ContentTreeNodeService;
 import com.tu.backend.externalresource.dto.CreateResourceChapterRequest;
 import com.tu.backend.externalresource.dto.CreateResourceItemRequest;
 import com.tu.backend.externalresource.dto.CreateResourceExcerptRequest;
 import com.tu.backend.externalresource.dto.UpdateResourceExcerptRequest;
-import com.tu.backend.externalresource.entity.ResourceChapterEntity;
 import com.tu.backend.externalresource.entity.ResourceExcerptEntity;
 import com.tu.backend.externalresource.entity.ResourceItemEntity;
 import com.tu.backend.externalresource.entity.ResourceTypeEntity;
 import com.tu.backend.externalresource.entity.ResourceWorkEntity;
-import com.tu.backend.externalresource.repository.ResourceChapterRepository;
 import com.tu.backend.externalresource.repository.ResourceExcerptRepository;
 import com.tu.backend.externalresource.repository.ResourceItemRelationRepository;
 import com.tu.backend.externalresource.repository.ResourceItemRepository;
@@ -186,7 +187,7 @@ class ExternalResourceServiceTest {
         context.service.removeItem("ri-book");
 
         verify(context.excerptRepository).deleteByResourceItemId("ri-book");
-        verify(context.chapterRepository).deleteByResourceItemId("ri-book");
+        verify(context.contentTreeNodeService).deleteResourceScope("ri-book");
         verify(context.itemRepository).delete(item);
     }
 
@@ -194,10 +195,12 @@ class ExternalResourceServiceTest {
     void createsNestedChaptersForBookItem() {
         TestContext context = new TestContext();
         context.stubBookItem();
-        when(context.chapterRepository.findByResourceItemIdOrderBySortOrderAscCreatedAtAsc("ri-book"))
+        when(context.contentTreeNodeService.listResourceItemNodes("ri-book"))
             .thenReturn(List.of());
-        when(context.chapterRepository.save(any(ResourceChapterEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(context.chapterRepository.findById("rc-parent")).thenReturn(Optional.of(chapter("rc-parent", "ri-book", null, "第一卷", 0)));
+        when(context.contentTreeNodeService.saveResourceNode(any(ContentTreeNodeEntity.class)))
+            .thenAnswer(invocation -> invocation.getArgument(0));
+        when(context.contentTreeNodeService.findResourceNode("rc-parent"))
+            .thenReturn(chapter("rc-parent", "ri-book", null, "第一卷", 0));
 
         var parent = context.service.createChapter("ri-book", new CreateResourceChapterRequest(
             null,
@@ -223,11 +226,11 @@ class ExternalResourceServiceTest {
     void createsExcerptWithChapterId() {
         TestContext context = new TestContext();
         context.stubBookItem();
-        ResourceChapterEntity chapter = chapter("rc-1", "ri-book", null, "第一章", 0);
-        when(context.chapterRepository.findById("rc-1")).thenReturn(Optional.of(chapter));
+        ContentTreeNodeEntity chapter = chapter("rc-1", "ri-book", null, "第一章", 0);
+        when(context.contentTreeNodeService.findResourceNode("rc-1")).thenReturn(chapter);
         when(context.excerptRepository.findByResourceItemId("ri-book")).thenReturn(List.of());
         when(context.excerptRepository.save(any(ResourceExcerptEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(context.chapterRepository.findByResourceItemIdOrderBySortOrderAscCreatedAtAsc("ri-book"))
+        when(context.contentTreeNodeService.listResourceItemNodes("ri-book"))
             .thenReturn(List.of(chapter));
 
         var dto = context.service.createExcerpt("ri-book", new CreateResourceExcerptRequest(
@@ -247,8 +250,8 @@ class ExternalResourceServiceTest {
     void rejectsExcerptChapterFromDifferentItem() {
         TestContext context = new TestContext();
         context.stubBookItem();
-        ResourceChapterEntity otherChapter = chapter("rc-other", "ri-other", null, "其他章节", 0);
-        when(context.chapterRepository.findById("rc-other")).thenReturn(Optional.of(otherChapter));
+        ContentTreeNodeEntity otherChapter = chapter("rc-other", "ri-other", null, "其他章节", 0);
+        when(context.contentTreeNodeService.findResourceNode("rc-other")).thenReturn(otherChapter);
 
         assertThatThrownBy(() -> context.service.createExcerpt("ri-book", new CreateResourceExcerptRequest(
             "节选",
@@ -266,12 +269,12 @@ class ExternalResourceServiceTest {
     void deletingChapterUnbindsExcerptsAndRemovesDescendants() {
         TestContext context = new TestContext();
         context.stubBookItem();
-        ResourceChapterEntity parent = chapter("rc-parent", "ri-book", null, "第一卷", 0);
-        ResourceChapterEntity child = chapter("rc-child", "ri-book", "rc-parent", "第一章", 1);
+        ContentTreeNodeEntity parent = chapter("rc-parent", "ri-book", null, "第一卷", 0);
+        ContentTreeNodeEntity child = chapter("rc-child", "ri-book", "rc-parent", "第一章", 1);
         ResourceExcerptEntity excerpt = excerpt("re-1", "ri-book", "节选", 0);
         excerpt.setChapterId("rc-child");
-        when(context.chapterRepository.findById("rc-parent")).thenReturn(Optional.of(parent));
-        when(context.chapterRepository.findByResourceItemIdOrderBySortOrderAscCreatedAtAsc("ri-book"))
+        when(context.contentTreeNodeService.findResourceNode("rc-parent")).thenReturn(parent);
+        when(context.contentTreeNodeService.listResourceItemNodes("ri-book"))
             .thenReturn(List.of(parent, child));
         when(context.excerptRepository.findByResourceItemId("ri-book")).thenReturn(List.of(excerpt));
         when(context.excerptRepository.save(any(ResourceExcerptEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -279,19 +282,20 @@ class ExternalResourceServiceTest {
         context.service.deleteChapter("rc-parent");
 
         assertThat(excerpt.getChapterId()).isNull();
-        verify(context.chapterRepository).deleteAllById(Set.of("rc-parent", "rc-child"));
+        verify(context.contentTreeNodeService).deleteResourceNodes(Set.of("rc-parent", "rc-child"));
     }
 
-    private static ResourceChapterEntity chapter(
+    private static ContentTreeNodeEntity chapter(
         String id,
         String itemId,
         String parentId,
         String title,
         int sortOrder
     ) {
-        ResourceChapterEntity entity = new ResourceChapterEntity();
+        ContentTreeNodeEntity entity = new ContentTreeNodeEntity();
         entity.setId(id);
-        entity.setResourceItemId(itemId);
+        entity.setScopeType(ScopeType.RESOURCE_ITEM);
+        entity.setScopeId(itemId);
         entity.setParentId(parentId);
         entity.setTitle(title);
         entity.setSortOrder(sortOrder);
@@ -342,7 +346,7 @@ class ExternalResourceServiceTest {
         final ResourceWorkRepository workRepository = mock(ResourceWorkRepository.class);
         final ResourceItemRepository itemRepository = mock(ResourceItemRepository.class);
         final ResourceExcerptRepository excerptRepository = mock(ResourceExcerptRepository.class);
-        final ResourceChapterRepository chapterRepository = mock(ResourceChapterRepository.class);
+        final ContentTreeNodeService contentTreeNodeService = mock(ContentTreeNodeService.class);
         final ResourceItemRelationRepository itemRelationRepository = mock(ResourceItemRelationRepository.class);
         final UrlClusterMatcherService clusterMatcherService = mock(UrlClusterMatcherService.class);
         final ExternalResourceService service = new ExternalResourceService(
@@ -350,7 +354,7 @@ class ExternalResourceServiceTest {
             workRepository,
             itemRepository,
             excerptRepository,
-            chapterRepository,
+            contentTreeNodeService,
             itemRelationRepository,
             clusterMatcherService
         );

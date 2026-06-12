@@ -4,6 +4,7 @@ import com.tu.backend.content.entity.PageContentEntity;
 import com.tu.backend.content.repository.PageContentRepository;
 import com.tu.backend.page.entity.PageEntity;
 import com.tu.backend.page.repository.PageRepository;
+import com.tu.backend.contenttree.service.ContentTreeIndexService;
 import com.tu.backend.rag.RagIndexService;
 import com.tu.backend.search.SearchIndexService;
 import org.slf4j.Logger;
@@ -27,6 +28,7 @@ public class PageIndexCoordinator {
     private final PageContentRepository pageContentRepository;
     private final RagIndexService ragIndexService;
     private final SearchIndexService searchIndexService;
+    private final ContentTreeIndexService contentTreeIndexService;
     private final IndexProperties indexProperties;
 
     private final Set<String> dirtyPageIds = ConcurrentHashMap.newKeySet();
@@ -37,12 +39,14 @@ public class PageIndexCoordinator {
         PageContentRepository pageContentRepository,
         RagIndexService ragIndexService,
         SearchIndexService searchIndexService,
+        ContentTreeIndexService contentTreeIndexService,
         IndexProperties indexProperties
     ) {
         this.pageRepository = pageRepository;
         this.pageContentRepository = pageContentRepository;
         this.ragIndexService = ragIndexService;
         this.searchIndexService = searchIndexService;
+        this.contentTreeIndexService = contentTreeIndexService;
         this.indexProperties = indexProperties;
     }
 
@@ -51,7 +55,9 @@ public class PageIndexCoordinator {
             return;
         }
         dirtyPageIds.add(pageId);
+        String fingerprint = computeFingerprint(pageId);
         searchIndexService.indexPageBestEffort(pageId);
+        contentTreeIndexService.rebuildPageBestEffort(pageId, fingerprint);
     }
 
     public void markDirty(String pageId) {
@@ -77,6 +83,7 @@ public class PageIndexCoordinator {
         }
         ragIndexService.indexPageBestEffort(pageId);
         searchIndexService.indexPageBestEffort(pageId);
+        contentTreeIndexService.rebuildPageBestEffort(pageId, computeFingerprint(pageId));
         lastRagIndexedFingerprints.put(pageId, computeFingerprint(pageId));
         dirtyPageIds.remove(pageId);
     }
@@ -99,6 +106,7 @@ public class PageIndexCoordinator {
         cancelAll(pageIds);
         ragIndexService.deletePagesBestEffort(kbId, pageIds);
         searchIndexService.deletePagesBestEffort(kbId, pageIds);
+        contentTreeIndexService.deletePagesBestEffort(pageIds);
     }
 
     public void deleteKnowledgeBase(String kbId) {

@@ -7,6 +7,7 @@ public class SearchProperties {
 
     private boolean enabled = true;
     private String index = "tu_pages";
+    private String headingsIndex = "tu_headings";
     /**
      * REST API compatibility version sent to Elasticsearch.
      * Use "8" when the server runs Elasticsearch 8.x (default for docker-compose.infra.yml).
@@ -28,6 +29,14 @@ public class SearchProperties {
 
     public void setIndex(String index) {
         this.index = index;
+    }
+
+    public String getHeadingsIndex() {
+        return headingsIndex;
+    }
+
+    public void setHeadingsIndex(String headingsIndex) {
+        this.headingsIndex = headingsIndex;
     }
 
     public String getElasticsearchApiVersion() {

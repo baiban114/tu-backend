@@ -1,6 +1,8 @@
 package com.tu.backend.index;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -10,6 +12,7 @@ import com.tu.backend.content.entity.PageContentEntity;
 import com.tu.backend.content.repository.PageContentRepository;
 import com.tu.backend.page.entity.PageEntity;
 import com.tu.backend.page.repository.PageRepository;
+import com.tu.backend.contenttree.service.ContentTreeIndexService;
 import com.tu.backend.rag.RagIndexService;
 import com.tu.backend.search.SearchIndexService;
 import java.util.List;
@@ -35,6 +38,9 @@ class PageIndexCoordinatorTest {
     @Mock
     private SearchIndexService searchIndexService;
 
+    @Mock
+    private ContentTreeIndexService contentTreeIndexService;
+
     private IndexProperties indexProperties;
     private PageIndexCoordinator coordinator;
 
@@ -47,6 +53,7 @@ class PageIndexCoordinatorTest {
             pageContentRepository,
             ragIndexService,
             searchIndexService,
+            contentTreeIndexService,
             indexProperties
         );
     }
@@ -56,6 +63,7 @@ class PageIndexCoordinatorTest {
         coordinator.onPageContentChanged("p-1");
 
         verify(searchIndexService, times(1)).indexPageBestEffort("p-1");
+        verify(contentTreeIndexService, times(1)).rebuildPageBestEffort(eq("p-1"), any());
         verify(ragIndexService, never()).indexPageBestEffort("p-1");
         assertThat(coordinator.isDirty("p-1")).isTrue();
     }
@@ -108,6 +116,7 @@ class PageIndexCoordinatorTest {
 
         verify(ragIndexService).deletePagesBestEffort("kb-1", List.of("p-1", "p-2"));
         verify(searchIndexService).deletePagesBestEffort("kb-1", List.of("p-1", "p-2"));
+        verify(contentTreeIndexService).deletePagesBestEffort(List.of("p-1", "p-2"));
     }
 
     @Test
