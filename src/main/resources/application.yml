@@ -30,6 +30,10 @@ spring:
         transcription: none
   elasticsearch:
     uris: ${ELASTICSEARCH_URIS:http://localhost:9200}
+  servlet:
+    multipart:
+      max-file-size: ${STORAGE_MULTIPART_MAX_FILE_SIZE:20MB}
+      max-request-size: ${STORAGE_MULTIPART_MAX_REQUEST_SIZE:25MB}
 
 server:
   port: 8080
@@ -53,6 +57,16 @@ search:
 index:
   flush-interval-ms: ${INDEX_FLUSH_INTERVAL_MS:300000}
   fingerprint-enabled: ${INDEX_FINGERPRINT_ENABLED:true}
+
+storage:
+  enabled: ${STORAGE_ENABLED:true}
+  s3-endpoint: ${STORAGE_S3_ENDPOINT:http://localhost:9000}
+  s3-region: ${STORAGE_S3_REGION:us-east-1}
+  s3-access-key: ${STORAGE_S3_ACCESS_KEY:tuadmin}
+  s3-secret-key: ${STORAGE_S3_SECRET_KEY:tu123456}
+  s3-bucket: ${STORAGE_S3_BUCKET:tu-files}
+  s3-path-style: ${STORAGE_S3_PATH_STYLE:true}
+  max-file-size: ${STORAGE_MAX_FILE_SIZE:20971520}
 
 secret:
   # Development fallback key. Override TU_SECRET_ENCRYPTION_KEY in production.

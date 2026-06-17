@@ -34,6 +34,31 @@ docker compose -f docker-compose.infra.yml up -d
 
 Use this for local shared middleware without rebuilding application services.
 
+## MinIO Only (object storage)
+
+When MySQL / ES / other containers are already running, use the **standalone** compose file.
+It uses project name `minio` and does not touch other stacks.
+
+```powershell
+cd tu-backend
+copy .env.minio.example .env.minio
+docker compose -f docker-compose.minio.yml --env-file .env.minio pull
+docker compose -f docker-compose.minio.yml --env-file .env.minio up -d
+```
+
+- S3 API: `http://localhost:9000` (override with `MINIO_API_PORT` in `.env.minio`)
+- Console: `http://localhost:9001` (login = `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`)
+- Data volume: `minio-data` (Compose project `minio`)
+
+Stop / remove only MinIO:
+
+```powershell
+docker compose -f docker-compose.minio.yml --env-file .env.minio down
+```
+
+Configure `tu-backend` with the same credentials (`STORAGE_S3_*` in `.env.example`).
+On first upload the backend creates bucket `tu-files` if missing.
+
 ## Kaneo
 
 Kaneo is pulled from GHCR:
