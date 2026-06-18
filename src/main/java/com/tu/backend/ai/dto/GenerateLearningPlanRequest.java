@@ -7,6 +7,8 @@ public record GenerateLearningPlanRequest(
     @NotBlank String topic,
     @DecimalMin(value = "0.0", inclusive = false) Double totalHours,
     @DecimalMin(value = "0.0", inclusive = false) Double dailyHours,
-    String deadline
+    String deadline,
+    String kbId,
+    Boolean enableWebSearch
 ) {
 }

@@ -31,7 +31,10 @@ class AiAgentSettingsServiceTest {
             true,
             "https://api.example.com/v1",
             "gpt-test",
-            "sk-secret"
+            "sk-secret",
+            30,
+            300,
+            300
         ));
         var secret = context.secretRepository.findByScopeAndKey(
             AiAgentSettingsService.SECRET_SCOPE,
@@ -47,9 +50,13 @@ class AiAgentSettingsServiceTest {
     void retainsExistingApiKeyWhenUpdateOmitsKey() {
         TestContext context = new TestContext();
         AiAgentSettingsService service = context.service();
-        service.updateSettings(new UpdateAiAgentSettingsRequest(true, "https://one.example/v1", "model-a", "sk-secret"));
+        service.updateSettings(new UpdateAiAgentSettingsRequest(
+            true, "https://one.example/v1", "model-a", "sk-secret", 30, 300, 300
+        ));
 
-        var dto = service.updateSettings(new UpdateAiAgentSettingsRequest(false, "https://two.example/v1", "model-b", ""));
+        var dto = service.updateSettings(new UpdateAiAgentSettingsRequest(
+            false, "https://two.example/v1", "model-b", "", 30, 600, 600
+        ));
 
         assertThat(dto.apiKeyConfigured()).isTrue();
         assertThat(service.runtimeConfig().enabled()).isFalse();
@@ -62,7 +69,9 @@ class AiAgentSettingsServiceTest {
     void deletesApiKey() {
         TestContext context = new TestContext();
         AiAgentSettingsService service = context.service();
-        service.updateSettings(new UpdateAiAgentSettingsRequest(true, "https://api.example.com/v1", "model", "sk-secret"));
+        service.updateSettings(new UpdateAiAgentSettingsRequest(
+            true, "https://api.example.com/v1", "model", "sk-secret", 30, 300, 300
+        ));
 
         var dto = service.deleteApiKey();
 
@@ -76,7 +85,8 @@ class AiAgentSettingsServiceTest {
         when(configRepository.findById(AiAgentSettingsService.CONFIG_ID)).thenReturn(Optional.empty());
         AiAgentSettingsService service = new AiAgentSettingsService(
             configRepository,
-            mock(ManagedSecretService.class)
+            mock(ManagedSecretService.class),
+            new AiAgentProperties()
         );
 
         AiAgentRuntimeConfig config = service.runtimeConfig();
@@ -85,6 +95,22 @@ class AiAgentSettingsServiceTest {
         assertThat(config.baseUrl()).isEmpty();
         assertThat(config.model()).isEmpty();
         assertThat(config.apiKey()).isEmpty();
+        assertThat(config.readTimeoutSeconds()).isEqualTo(300);
+    }
+
+    @Test
+    void persistsHttpTimeoutsInSettings() {
+        TestContext context = new TestContext();
+        AiAgentSettingsService service = context.service();
+
+        var dto = service.updateSettings(new UpdateAiAgentSettingsRequest(
+            true, "https://api.example.com/v1", "model", "sk-secret", 15, 600, 480
+        ));
+
+        assertThat(dto.connectTimeoutSeconds()).isEqualTo(15);
+        assertThat(dto.readTimeoutSeconds()).isEqualTo(600);
+        assertThat(dto.requestTimeoutSeconds()).isEqualTo(480);
+        assertThat(service.runtimeConfig().readTimeoutSeconds()).isEqualTo(600);
     }
 
     private static final class TestContext {
@@ -128,7 +154,7 @@ class AiAgentSettingsServiceTest {
                 secretRepository,
                 new SecretCryptoService(secretProperties)
             );
-            return new AiAgentSettingsService(configRepository, secretService);
+            return new AiAgentSettingsService(configRepository, secretService, new AiAgentProperties());
         }
     }
 }

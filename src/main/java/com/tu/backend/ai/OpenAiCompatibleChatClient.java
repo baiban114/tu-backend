@@ -1,8 +1,9 @@
 package com.tu.backend.ai;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openai.client.okhttp.OpenAIOkHttpClient;
+import com.openai.core.Timeout;
 import com.tu.backend.common.BusinessException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.LinkedHashMap;
@@ -17,28 +18,49 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.ai.model.tool.ToolCallingManager;
+import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 @Component
-public class OpenAiCompatibleChatClient implements AiChatClient, AiAgentConnectionTester {
+public class OpenAiCompatibleChatClient implements AiChatClient, AiAgentConnectionTester, AiAgentToolLoopClient {
 
     private final ObjectMapper objectMapper;
     private final ChatModelFactory chatModelFactory;
+    private final ToolCallingManager toolCallingManager;
+    private final AiAgentProperties aiAgentProperties;
 
     @Autowired
-    public OpenAiCompatibleChatClient(ObjectMapper objectMapper) {
-        this(objectMapper, OpenAiCompatibleChatClient::createOpenAiChatModel);
+    public OpenAiCompatibleChatClient(
+        ObjectMapper objectMapper,
+        ToolCallingManager toolCallingManager,
+        AiAgentProperties aiAgentProperties
+    ) {
+        this(objectMapper, (config, options) -> createOpenAiChatModel(config, options), toolCallingManager, aiAgentProperties);
     }
 
     OpenAiCompatibleChatClient(
         ObjectMapper objectMapper,
         ChatModelFactory chatModelFactory
     ) {
+        this(objectMapper, chatModelFactory, ToolCallingManager.builder().build(), new AiAgentProperties());
+    }
+
+    OpenAiCompatibleChatClient(
+        ObjectMapper objectMapper,
+        ChatModelFactory chatModelFactory,
+        ToolCallingManager toolCallingManager,
+        AiAgentProperties aiAgentProperties
+    ) {
         this.objectMapper = objectMapper;
         this.chatModelFactory = chatModelFactory;
+        this.toolCallingManager = toolCallingManager;
+        this.aiAgentProperties = aiAgentProperties;
     }
 
     @Override
@@ -53,6 +75,7 @@ public class OpenAiCompatibleChatClient implements AiChatClient, AiAgentConnecti
                 .apiKey(config.apiKey())
                 .model(config.model())
                 .temperature(0.2)
+                .timeout(requestTimeoutDuration(config))
                 .responseFormat(OpenAiChatModel.ResponseFormat.builder()
                     .type(OpenAiChatModel.ResponseFormat.Type.JSON_OBJECT)
                     .build())
@@ -90,7 +113,7 @@ public class OpenAiCompatibleChatClient implements AiChatClient, AiAgentConnecti
                 );
             }
             return new AiChatCompletionResult(
-                stripJsonFence(content),
+                AiAgentJsonContent.extract(content),
                 requestBodyJson,
                 rawResponseBody,
                 elapsedMillis(startedAt),
@@ -114,15 +137,243 @@ public class OpenAiCompatibleChatClient implements AiChatClient, AiAgentConnecti
         }
     }
 
-    private static ChatModel createOpenAiChatModel(AiAgentRuntimeConfig config, OpenAiChatOptions options) {
-        var openAiClient = OpenAIOkHttpClient.builder()
-            .baseUrl(stripTrailingSlash(config.baseUrl()))
-            .apiKey(config.apiKey())
-            .build();
+    @Override
+    public AiAgentToolLoopResult runToolLoop(
+        AiAgentRuntimeConfig config,
+        String systemPrompt,
+        String userPrompt,
+        AiAgentExecutionContext executionContext,
+        AiAgentProgressListener progressListener,
+        Object... toolProviders
+    ) {
+        ensureConfigured(config);
+        AiAgentExecutionContextHolder.set(executionContext);
+        String requestBodyJson = "";
+        String rawResponseBody = null;
+        long startedAt = System.nanoTime();
+        int modelCallCount = 0;
+        int toolRoundCount = 0;
+        try {
+            List<ToolCallback> toolCallbacks = AiAgentToolCallbackSupport.fromProviders(toolProviders);
+            OpenAiChatOptions options = OpenAiChatOptions.builder()
+                .baseUrl(stripTrailingSlash(config.baseUrl()))
+                .apiKey(config.apiKey())
+                .model(config.model())
+                .temperature(0.2)
+                .timeout(requestTimeoutDuration(config))
+                .toolCallbacks(toolCallbacks)
+                .build();
+            Map<String, Object> requestBody = new LinkedHashMap<>();
+            requestBody.put("baseUrl", stripTrailingSlash(config.baseUrl()));
+            requestBody.put("model", config.model());
+            requestBody.put("temperature", 0.2);
+            requestBody.put("toolLoop", true);
+            requestBody.put("maxToolRounds", aiAgentProperties.getToolLoop().getMaxToolRounds());
+            requestBody.put("messages", List.of(
+                Map.of("role", "system", "content", systemPrompt),
+                Map.of("role", "user", "content", userPrompt)
+            ));
+            requestBodyJson = objectMapper.writeValueAsString(requestBody);
+
+            ChatModel chatModel = chatModelFactory.create(config, options);
+            ChatOptions chatOptions = options;
+            Prompt prompt = new Prompt(
+                List.of(new SystemMessage(systemPrompt), new UserMessage(userPrompt)),
+                chatOptions
+            );
+
+            ensureNotCancelled(progressListener);
+            emitProgress(progressListener, AiAgentProgressEvent.of(
+                AiAgentProgressEvent.phaseModelCall(),
+                "正在调用模型（第 1 轮）",
+                1,
+                null,
+                startedAt
+            ));
+            ChatResponse chatResponse = chatModel.call(prompt);
+            modelCallCount++;
+
+            int maxToolRounds = Math.max(1, aiAgentProperties.getToolLoop().getMaxToolRounds());
+            while (chatResponse.hasToolCalls() && toolRoundCount < maxToolRounds) {
+                toolRoundCount++;
+                emitToolCallProgress(progressListener, chatResponse, startedAt);
+                ToolExecutionResult toolExecutionResult = toolCallingManager.executeToolCalls(prompt, chatResponse);
+                emitToolDoneProgress(progressListener, chatResponse, startedAt);
+                prompt = new Prompt(toolExecutionResult.conversationHistory(), chatOptions);
+                ensureNotCancelled(progressListener);
+                int nextRound = modelCallCount + 1;
+                emitProgress(progressListener, AiAgentProgressEvent.of(
+                    AiAgentProgressEvent.phaseModelCall(),
+                    "正在调用模型（第 " + nextRound + " 轮）",
+                    nextRound,
+                    null,
+                    startedAt
+                ));
+                chatResponse = chatModel.call(prompt);
+                modelCallCount++;
+            }
+
+            rawResponseBody = serializeChatResponse(chatResponse);
+            if (chatResponse.hasToolCalls()) {
+                throw new BusinessException(
+                    50325,
+                    "ai agent exceeded max tool loop rounds: " + maxToolRounds
+                );
+            }
+
+            UsageSnapshot usage = usageFromResponse(chatResponse);
+            String content = AiAgentJsonContent.extract(contentFromResponse(chatResponse));
+            if (content.isBlank()) {
+                throw new AiChatException(
+                    50323,
+                    "ai agent returned empty response: " + requestContext(config)
+                        + "; response=" + abbreviate(rawResponseBody),
+                    requestBodyJson,
+                    rawResponseBody,
+                    elapsedMillis(startedAt),
+                    usage.promptTokens(),
+                    usage.completionTokens(),
+                    usage.totalTokens()
+                );
+            }
+            return new AiAgentToolLoopResult(
+                content,
+                requestBodyJson,
+                rawResponseBody,
+                elapsedMillis(startedAt),
+                usage.promptTokens(),
+                usage.completionTokens(),
+                usage.totalTokens(),
+                modelCallCount,
+                toolRoundCount
+            );
+        } catch (BusinessException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new AiChatException(
+                50322,
+                "ai agent tool loop failed: " + requestContext(config) + "; " + exceptionDetail(ex),
+                requestBodyJson,
+                rawResponseBody,
+                elapsedMillis(startedAt),
+                null,
+                null,
+                null
+            );
+        } finally {
+            AiAgentExecutionContextHolder.clear();
+        }
+    }
+
+    private void ensureNotCancelled(AiAgentProgressListener progressListener) {
+        if (progressListener != null && progressListener.isCancelled()) {
+            throw new BusinessException(50326, "ai agent run cancelled");
+        }
+    }
+
+    private void emitProgress(AiAgentProgressListener progressListener, AiAgentProgressEvent event) {
+        if (progressListener != null) {
+            progressListener.onEvent(event);
+        }
+    }
+
+    private void emitToolCallProgress(
+        AiAgentProgressListener progressListener,
+        ChatResponse chatResponse,
+        long startedAt
+    ) {
+        if (progressListener == null) {
+            return;
+        }
+        for (String toolName : toolNamesFromResponse(chatResponse)) {
+            emitProgress(progressListener, AiAgentProgressEvent.of(
+                AiAgentProgressEvent.phaseToolCall(),
+                AiAgentToolLabels.toolCallMessage(toolName),
+                null,
+                toolName,
+                startedAt
+            ));
+        }
+    }
+
+    private void emitToolDoneProgress(
+        AiAgentProgressListener progressListener,
+        ChatResponse chatResponse,
+        long startedAt
+    ) {
+        if (progressListener == null) {
+            return;
+        }
+        for (String toolName : toolNamesFromResponse(chatResponse)) {
+            emitProgress(progressListener, AiAgentProgressEvent.of(
+                AiAgentProgressEvent.phaseToolDone(),
+                AiAgentToolLabels.toolDoneMessage(toolName),
+                null,
+                toolName,
+                startedAt
+            ));
+        }
+    }
+
+    private List<String> toolNamesFromResponse(ChatResponse chatResponse) {
+        if (chatResponse == null || chatResponse.getResult() == null) {
+            return List.of();
+        }
+        AssistantMessage output = chatResponse.getResult().getOutput();
+        if (output == null || output.getToolCalls() == null) {
+            return List.of();
+        }
+        return output.getToolCalls().stream()
+            .map(AssistantMessage.ToolCall::name)
+            .filter(name -> name != null && !name.isBlank())
+            .distinct()
+            .toList();
+    }
+
+    private static ChatModel createOpenAiChatModel(
+        AiAgentRuntimeConfig config,
+        OpenAiChatOptions options
+    ) {
+        Timeout timeout = httpTimeout(config);
         return OpenAiChatModel.builder()
-            .openAiClient(openAiClient)
             .options(options)
+            .httpClientBuilderCustomizer(builder -> builder.timeout(timeout))
             .build();
+    }
+
+    static Timeout httpTimeout(AiAgentRuntimeConfig config) {
+        Duration connect = Duration.ofSeconds(Math.max(1, config.connectTimeoutSeconds()));
+        Duration read = Duration.ofSeconds(Math.max(1, config.readTimeoutSeconds()));
+        Duration request = requestTimeoutDuration(config);
+        return Timeout.builder()
+            .connect(connect)
+            .read(read)
+            .write(read)
+            .request(request)
+            .build();
+    }
+
+    private static Duration requestTimeoutDuration(AiAgentRuntimeConfig config) {
+        return Duration.ofSeconds(Math.max(1, config.requestTimeoutSeconds()));
+    }
+
+    static Timeout httpTimeout(AiAgentProperties.HttpClient httpClient) {
+        Duration connect = positiveDuration(httpClient.getConnectTimeout(), Duration.ofSeconds(30));
+        Duration read = positiveDuration(httpClient.getReadTimeout(), Duration.ofMinutes(5));
+        Duration request = positiveDuration(httpClient.getRequestTimeout(), Duration.ofMinutes(5));
+        return Timeout.builder()
+            .connect(connect)
+            .read(read)
+            .write(read)
+            .request(request)
+            .build();
+    }
+
+    private static Duration positiveDuration(Duration value, Duration fallback) {
+        if (value == null || value.isZero() || value.isNegative()) {
+            return fallback;
+        }
+        return value;
     }
 
     private String contentFromResponse(ChatResponse response) {
@@ -216,9 +467,26 @@ public class OpenAiCompatibleChatClient implements AiChatClient, AiAgentConnecti
     }
 
     private String exceptionDetail(Exception ex) {
-        return "exception=" + ex.getClass().getName()
+        String detail = "exception=" + ex.getClass().getName()
             + ": " + nullToBlank(ex.getMessage())
             + causeDetail(ex);
+        if (isTimeoutException(ex)) {
+            detail += "; hint=模型响应超时，可在系统配置 > AI Agent 调大读超时/请求超时后重试";
+        }
+        return detail;
+    }
+
+    private boolean isTimeoutException(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            String name = current.getClass().getName();
+            String message = nullToBlank(current.getMessage()).toLowerCase();
+            if (name.contains("Timeout") || name.contains("InterruptedIOException") || message.contains("timeout")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private String causeDetail(Throwable throwable) {
@@ -242,18 +510,6 @@ public class OpenAiCompatibleChatClient implements AiChatClient, AiAgentConnecti
             return normalized;
         }
         return normalized.substring(0, maxLength) + "...<truncated " + (normalized.length() - maxLength) + " chars>";
-    }
-
-    private String stripJsonFence(String value) {
-        String trimmed = value.trim();
-        if (trimmed.startsWith("```")) {
-            int firstBreak = trimmed.indexOf('\n');
-            int lastFence = trimmed.lastIndexOf("```");
-            if (firstBreak >= 0 && lastFence > firstBreak) {
-                return trimmed.substring(firstBreak + 1, lastFence).trim();
-            }
-        }
-        return trimmed;
     }
 
     interface ChatModelFactory {

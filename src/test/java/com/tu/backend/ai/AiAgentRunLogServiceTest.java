@@ -24,7 +24,7 @@ class AiAgentRunLogServiceTest {
         AiAgentRunLogService service = context.service;
         AiAgentRunLogEntity started = service.start(
             AiAgentRunLogService.TASK_LEARNING_PLAN,
-            new AiAgentRuntimeConfig(true, "https://api.example.com", "sk-secret", "model-a"),
+            new AiAgentRuntimeConfig(true, "https://api.example.com", "sk-secret", "model-a", 30, 300, 300),
             "system prompt",
             "user prompt"
         );
@@ -57,7 +57,7 @@ class AiAgentRunLogServiceTest {
         TestContext context = new TestContext();
         AiAgentRunLogEntity started = context.service.start(
             AiAgentRunLogService.TASK_LEARNING_PLAN,
-            new AiAgentRuntimeConfig(true, "https://api.example.com", "sk-secret", "model-a"),
+            new AiAgentRuntimeConfig(true, "https://api.example.com", "sk-secret", "model-a", 30, 300, 300),
             "system",
             "user"
         );
@@ -83,7 +83,7 @@ class AiAgentRunLogServiceTest {
         TestContext context = new TestContext();
         AiAgentRunLogEntity started = context.service.start(
             AiAgentRunLogService.TASK_LEARNING_PLAN,
-            new AiAgentRuntimeConfig(true, "https://api.example.com", "sk-secret", "model-a"),
+            new AiAgentRuntimeConfig(true, "https://api.example.com", "sk-secret", "model-a", 30, 300, 300),
             "system",
             "user"
         );

@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openai.core.Timeout;
 import com.tu.backend.common.BusinessException;
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
@@ -16,6 +18,7 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
 class OpenAiCompatibleChatClientTest {
@@ -26,7 +29,7 @@ class OpenAiCompatibleChatClientTest {
     void rejectsDisabledAgent() {
         OpenAiCompatibleChatClient client = client((config, options) -> responseModel("{\"ok\":true}", usage(1, 1, 2)));
 
-        assertThatThrownBy(() -> client.completeJson(new AiAgentRuntimeConfig(false, "", "", ""), "system", "user"))
+        assertThatThrownBy(() -> client.completeJson(new AiAgentRuntimeConfig(false, "", "", "", 30, 300, 300), "system", "user"))
             .isInstanceOf(BusinessException.class)
             .hasMessage("ai agent disabled");
     }
@@ -35,11 +38,14 @@ class OpenAiCompatibleChatClientTest {
     void canBeCreatedBySpringContainer() {
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
             context.registerBean(ObjectMapper.class, (Supplier<ObjectMapper>) ObjectMapper::new);
+            context.registerBean(AiAgentProperties.class, AiAgentProperties::new);
+            context.registerBean(ToolCallingManager.class, () -> ToolCallingManager.builder().build());
             context.register(OpenAiCompatibleChatClient.class);
             context.refresh();
 
             assertThat(context.getBean(OpenAiCompatibleChatClient.class)).isNotNull();
             assertThat(context.getBean(AiChatClient.class)).isNotNull();
+            assertThat(context.getBean(AiAgentToolLoopClient.class)).isNotNull();
             assertThat(context.getBean(AiAgentConnectionTester.class)).isNotNull();
         }
     }
@@ -48,7 +54,7 @@ class OpenAiCompatibleChatClientTest {
     void rejectsIncompleteConfiguration() {
         OpenAiCompatibleChatClient client = client((config, options) -> responseModel("{\"ok\":true}", usage(1, 1, 2)));
 
-        assertThatThrownBy(() -> client.completeJson(new AiAgentRuntimeConfig(true, "https://api.example.com/v1", "", "model"), "system", "user"))
+        assertThatThrownBy(() -> client.completeJson(new AiAgentRuntimeConfig(true, "https://api.example.com/v1", "", "model", 30, 300, 300), "system", "user"))
             .isInstanceOf(BusinessException.class)
             .hasMessage("ai agent configuration incomplete");
     }
@@ -59,7 +65,7 @@ class OpenAiCompatibleChatClientTest {
             throw new IllegalArgumentException("synthetic spring ai failure");
         });
 
-        assertThatThrownBy(() -> client.completeJson(new AiAgentRuntimeConfig(true, "https://api.example.com", "sk-secret", "model-a"), "system", "user"))
+        assertThatThrownBy(() -> client.completeJson(new AiAgentRuntimeConfig(true, "https://api.example.com", "sk-secret", "model-a", 30, 300, 300), "system", "user"))
             .isInstanceOf(BusinessException.class)
             .hasMessageContaining("ai agent request failed")
             .hasMessageContaining("POST https://api.example.com/chat/completions")
@@ -83,7 +89,7 @@ class OpenAiCompatibleChatClientTest {
         });
 
         AiChatCompletionResult result = client.completeJson(
-            new AiAgentRuntimeConfig(true, "https://api.example.com/", "sk-secret", "model-a"),
+            new AiAgentRuntimeConfig(true, "https://api.example.com/", "sk-secret", "model-a", 30, 300, 300),
             "system prompt",
             "user prompt"
         );
@@ -107,7 +113,7 @@ class OpenAiCompatibleChatClientTest {
         OpenAiCompatibleChatClient client = client((config, options) -> responseModel("{\"ok\":true}", null));
 
         AiChatCompletionResult result = client.completeJson(
-            new AiAgentRuntimeConfig(true, "https://api.example.com", "sk-secret", "model-a"),
+            new AiAgentRuntimeConfig(true, "https://api.example.com", "sk-secret", "model-a", 30, 300, 300),
             "system",
             "user"
         );
@@ -122,11 +128,22 @@ class OpenAiCompatibleChatClientTest {
     void rejectsEmptyResponseWithSerializedSpringAiResponse() {
         OpenAiCompatibleChatClient client = client((config, options) -> responseModel("", usage(1, 0, 1)));
 
-        assertThatThrownBy(() -> client.completeJson(new AiAgentRuntimeConfig(true, "https://api.example.com", "sk-secret", "model-a"), "system", "user"))
+        assertThatThrownBy(() -> client.completeJson(new AiAgentRuntimeConfig(true, "https://api.example.com", "sk-secret", "model-a", 30, 300, 300), "system", "user"))
             .isInstanceOf(BusinessException.class)
             .hasMessageContaining("ai agent returned empty response")
             .hasMessageContaining("POST https://api.example.com/chat/completions")
             .hasMessageContaining("response=");
+    }
+
+    @Test
+    void buildsHttpTimeoutFromRuntimeConfig() {
+        Timeout timeout = OpenAiCompatibleChatClient.httpTimeout(
+            new AiAgentRuntimeConfig(true, "https://api.example.com", "sk", "model-a", 15, 600, 480)
+        );
+
+        assertThat(timeout.connect()).isEqualTo(Duration.ofSeconds(15));
+        assertThat(timeout.read()).isEqualTo(Duration.ofSeconds(600));
+        assertThat(timeout.request()).isEqualTo(Duration.ofSeconds(480));
     }
 
     private OpenAiCompatibleChatClient client(OpenAiCompatibleChatClient.ChatModelFactory factory) {

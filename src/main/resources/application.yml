@@ -54,6 +54,19 @@ search:
   index: ${SEARCH_INDEX:tu_pages}
   elasticsearch-api-version: ${SEARCH_ES_API_VERSION:8}
 
+ai:
+  agent:
+    tool-loop:
+      enabled: ${AI_AGENT_TOOL_LOOP_ENABLED:true}
+      max-tool-rounds: ${AI_AGENT_MAX_TOOL_ROUNDS:8}
+    web-search:
+      tavily-api-key: ${TAVILY_API_KEY:}
+      max-results: ${AI_AGENT_WEB_SEARCH_MAX_RESULTS:5}
+    http:
+      connect-timeout: ${AI_AGENT_HTTP_CONNECT_TIMEOUT:30s}
+      read-timeout: ${AI_AGENT_HTTP_READ_TIMEOUT:5m}
+      request-timeout: ${AI_AGENT_HTTP_REQUEST_TIMEOUT:5m}
+
 index:
   flush-interval-ms: ${INDEX_FLUSH_INTERVAL_MS:300000}
   fingerprint-enabled: ${INDEX_FINGERPRINT_ENABLED:true}

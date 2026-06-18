@@ -28,6 +28,15 @@ public class AiAgentConfigEntity {
     @Column(name = "api_key_secret_id", length = 96)
     private String apiKeySecretId;
 
+    @Column(name = "connect_timeout_seconds")
+    private Integer connectTimeoutSeconds;
+
+    @Column(name = "read_timeout_seconds")
+    private Integer readTimeoutSeconds;
+
+    @Column(name = "request_timeout_seconds")
+    private Integer requestTimeoutSeconds;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -84,5 +93,29 @@ public class AiAgentConfigEntity {
 
     public void setApiKeySecretId(String apiKeySecretId) {
         this.apiKeySecretId = apiKeySecretId;
+    }
+
+    public Integer getConnectTimeoutSeconds() {
+        return connectTimeoutSeconds;
+    }
+
+    public void setConnectTimeoutSeconds(Integer connectTimeoutSeconds) {
+        this.connectTimeoutSeconds = connectTimeoutSeconds;
+    }
+
+    public Integer getReadTimeoutSeconds() {
+        return readTimeoutSeconds;
+    }
+
+    public void setReadTimeoutSeconds(Integer readTimeoutSeconds) {
+        this.readTimeoutSeconds = readTimeoutSeconds;
+    }
+
+    public Integer getRequestTimeoutSeconds() {
+        return requestTimeoutSeconds;
+    }
+
+    public void setRequestTimeoutSeconds(Integer requestTimeoutSeconds) {
+        this.requestTimeoutSeconds = requestTimeoutSeconds;
     }
 }
