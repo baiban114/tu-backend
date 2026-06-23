@@ -3,6 +3,7 @@ package com.tu.backend.reference.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.tu.backend.content.tiptap.TiptapDocumentWalker;
 import com.tu.backend.common.BusinessException;
 import com.tu.backend.common.PageResponse;
 import com.tu.backend.content.entity.PageContentEntity;
@@ -307,6 +308,24 @@ public class ReferenceService {
         }
         String blockType = text(block.get("type"));
 
+        if ("richtext".equalsIgnoreCase(blockType) || "richText".equals(blockType)) {
+            JsonNode document = block.get("document");
+            if (TiptapDocumentWalker.isDocument(document)) {
+                collectTiptapDocumentReferences(
+                    pageId,
+                    blockId,
+                    blockPath,
+                    document,
+                    internalRecords,
+                    externalRecords,
+                    externalResourceRecords,
+                    existingExternalMap,
+                    existingResourceMap
+                );
+                return;
+            }
+        }
+
         if ("ref".equals(blockType)) {
             String refId = text(block.get("refId"));
             String refType = normalize(text(block.get("refType")));
@@ -367,6 +386,147 @@ public class ReferenceService {
                 index += 1;
             }
         }
+    }
+
+    private void collectTiptapDocumentReferences(
+        String pageId,
+        String blockId,
+        String blockPath,
+        JsonNode document,
+        List<InternalReferenceRecordEntity> internalRecords,
+        List<ExternalReferenceOccurrenceEntity> externalRecords,
+        List<ExternalResourceReferenceEntity> externalResourceRecords,
+        Map<ExternalReferenceKey, ExternalReferenceOccurrenceEntity> existingExternalMap,
+        Map<ExternalResourceReferenceKey, ExternalResourceReferenceEntity> existingResourceMap
+    ) {
+        TiptapDocumentWalker.collectReferences(pageId, blockId, blockPath, document, new TiptapDocumentWalker.ReferenceSink() {
+            @Override
+            public void onRef(String pageId, String embedBlockId, String embedPath, String refId, String refType) {
+                String normalizedRefType = normalize(refType);
+                if (refId.isBlank()) {
+                    return;
+                }
+                InternalReferenceRecordEntity entity = new InternalReferenceRecordEntity();
+                entity.setId(newId("irr"));
+                entity.setPageId(pageId);
+                entity.setBlockId(embedBlockId);
+                entity.setSourceKind("block_ref");
+                entity.setSourceLocator(embedPath);
+                entity.setTargetKind("page".equals(normalizedRefType) ? "page" : "block");
+                if ("page".equals(normalizedRefType)) {
+                    entity.setTargetPageId(refId);
+                } else {
+                    entity.setTargetBlockId(refId);
+                    entity.setTargetPageId(findPageIdByBlockId(refId));
+                }
+                entity.setRefKind("page".equals(normalizedRefType) ? "page" : "block");
+                internalRecords.add(entity);
+            }
+
+            @Override
+            public void onExternalResource(
+                String pageId,
+                String embedBlockId,
+                String embedPath,
+                String sourceLocator,
+                JsonNode externalResource
+            ) {
+                var fakeBlock = objectMapper.createObjectNode();
+                fakeBlock.set("externalResource", externalResource);
+                extractExternalResourceReference(
+                    pageId,
+                    embedBlockId,
+                    "externalResource",
+                    embedPath,
+                    fakeBlock,
+                    externalResourceRecords,
+                    existingResourceMap
+                );
+            }
+
+            @Override
+            public void onHeadingSource(
+                String pageId,
+                String parentBlockId,
+                String headingBlockId,
+                String resourceItemId,
+                String resourceExcerptId
+            ) {
+                String sourceLocator = "content:heading:" + headingBlockId;
+                ExternalResourceReferenceKey key = new ExternalResourceReferenceKey(
+                    pageId,
+                    parentBlockId,
+                    "headingSource",
+                    sourceLocator
+                );
+                ExternalResourceReferenceEntity existing = existingResourceMap.get(key);
+                ExternalResourceReferenceEntity entity = new ExternalResourceReferenceEntity();
+                entity.setId(existing == null ? newId("err") : existing.getId());
+                entity.setPageId(pageId);
+                entity.setBlockId(parentBlockId);
+                entity.setSourceKind("headingSource");
+                entity.setSourceLocator(sourceLocator);
+                entity.setResourceItemId(resourceItemId);
+                entity.setResourceExcerptId(resourceExcerptId);
+                externalResourceRecords.add(entity);
+            }
+
+            @Override
+            public void onGraphData(
+                String pageId,
+                String embedBlockId,
+                String embedType,
+                String embedPath,
+                JsonNode graphData
+            ) {
+                extractGraphReferences(
+                    pageId,
+                    embedBlockId,
+                    embedType,
+                    embedPath,
+                    graphData,
+                    internalRecords,
+                    externalRecords,
+                    existingExternalMap
+                );
+            }
+
+            @Override
+            public void onTableData(
+                String pageId,
+                String embedBlockId,
+                String embedType,
+                String embedPath,
+                JsonNode tableData
+            ) {
+                extractTableReferences(
+                    pageId,
+                    embedBlockId,
+                    embedType,
+                    embedPath,
+                    tableData,
+                    externalRecords,
+                    existingExternalMap
+                );
+            }
+
+            @Override
+            public void onExternalUrl(String pageId, String embedBlockId, String embedPath, String url) {
+                String normalized = normalizeUrl(url);
+                if (normalized == null) {
+                    return;
+                }
+                extractExternalReferences(
+                    pageId,
+                    embedBlockId,
+                    "richtext",
+                    embedPath,
+                    "[" + normalized + "](" + normalized + ")",
+                    externalRecords,
+                    existingExternalMap
+                );
+            }
+        });
     }
 
     private void extractExternalResourceReference(

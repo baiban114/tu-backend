@@ -9,6 +9,8 @@ public record PageContentDto(
     List<Object> embeds,
     List<Object> annotations,
     Map<String, Object> metadata,
-    List<Object> blocks
+    List<Object> blocks,
+    Object document,
+    Integer schemaVersion
 ) {
 }

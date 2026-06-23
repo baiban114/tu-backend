@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.tu.backend.common.BusinessException;
 import com.tu.backend.content.dto.PageContentDto;
 import com.tu.backend.content.dto.SavePageContentRequest;
@@ -27,6 +26,8 @@ public class PageContentService {
 
     private static final TypeReference<List<Object>> OBJECT_LIST_TYPE = new TypeReference<>() {
     };
+
+    private static final int SCHEMA_VERSION_V2 = 2;
 
     private final PageContentRepository pageContentRepository;
     private final PageRepository pageRepository;
@@ -53,7 +54,7 @@ public class PageContentService {
         ensurePageExists(pageId);
         return pageContentRepository.findById(pageId)
             .map(entity -> toPageContentDto(pageId, deserializeBlocks(entity.getBlocksJson())))
-            .orElseGet(() -> new PageContentDto(pageId, "", List.of(), List.of(), Map.of(), List.of()));
+            .orElseGet(() -> emptyPageContentDto(pageId));
     }
 
     @Transactional
@@ -83,8 +84,12 @@ public class PageContentService {
         pageContentRepository.deleteByPageIdIn(pageIds);
     }
 
+    private PageContentDto emptyPageContentDto(String pageId) {
+        return new PageContentDto(pageId, "", List.of(), List.of(), Map.of(), List.of(), null, null);
+    }
+
     private void ensurePageExists(String pageId) {
-        PageEntity page = pageRepository.findById(pageId)
+        pageRepository.findById(pageId)
             .orElseThrow(() -> new BusinessException(40001, "page not found"));
     }
 
@@ -110,13 +115,26 @@ public class PageContentService {
         }
 
         List<Object> blocks = new ArrayList<>();
+        Map<String, Object> metadata = request.metadata() == null ? new HashMap<>() : new HashMap<>(request.metadata());
+        metadata.put("annotations", request.annotations() == null ? List.of() : request.annotations());
+
+        if (request.document() != null) {
+            Map<String, Object> richText = new HashMap<>();
+            richText.put("id", "page-content");
+            richText.put("type", "richtext");
+            richText.put("document", request.document());
+            richText.put("content", request.content() == null ? "" : request.content());
+            int schemaVersion = request.schemaVersion() == null ? SCHEMA_VERSION_V2 : request.schemaVersion();
+            metadata.put("schemaVersion", schemaVersion);
+            richText.put("metadata", metadata);
+            blocks.add(richText);
+            return blocks;
+        }
+
         Map<String, Object> richText = new HashMap<>();
         richText.put("id", "page-content");
         richText.put("type", "richtext");
         richText.put("content", request.content() == null ? "" : request.content());
-
-        Map<String, Object> metadata = request.metadata() == null ? new HashMap<>() : new HashMap<>(request.metadata());
-        metadata.put("annotations", request.annotations() == null ? List.of() : request.annotations());
         richText.put("metadata", metadata);
         blocks.add(richText);
 
@@ -132,13 +150,19 @@ public class PageContentService {
         List<Object> embeds = new ArrayList<>();
         List<Object> annotations = List.of();
         Map<String, Object> metadata = Map.of();
+        Object document = null;
+        Integer schemaVersion = null;
 
         for (Object block : blocks) {
             JsonNode node = objectMapper.valueToTree(block);
             String type = node.path("type").asText("");
             if ("richtext".equalsIgnoreCase(type) || "richText".equals(type)) {
-                if (content.isEmpty()) {
+                if (content.isEmpty() && document == null) {
                     content = node.path("content").asText("");
+                    JsonNode documentNode = node.path("document");
+                    if (!documentNode.isMissingNode() && documentNode.isObject()) {
+                        document = objectMapper.convertValue(documentNode, Map.class);
+                    }
                     JsonNode metadataNode = node.path("metadata");
                     if (metadataNode.isObject()) {
                         metadata = objectMapper.convertValue(metadataNode, Map.class);
@@ -146,6 +170,13 @@ public class PageContentService {
                         if (rawAnnotations instanceof List<?> list) {
                             annotations = new ArrayList<>(list);
                         }
+                        Object rawSchemaVersion = metadata.get("schemaVersion");
+                        if (rawSchemaVersion instanceof Number number) {
+                            schemaVersion = number.intValue();
+                        }
+                    }
+                    if (document != null && schemaVersion == null) {
+                        schemaVersion = SCHEMA_VERSION_V2;
                     }
                 }
             } else {
@@ -153,6 +184,15 @@ public class PageContentService {
             }
         }
 
-        return new PageContentDto(pageId, content, embeds, annotations, metadata, blocks);
+        return new PageContentDto(
+            pageId,
+            content,
+            embeds,
+            annotations,
+            metadata,
+            blocks,
+            document,
+            schemaVersion
+        );
     }
 }

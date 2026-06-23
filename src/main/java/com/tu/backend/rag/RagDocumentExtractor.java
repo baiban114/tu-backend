@@ -3,6 +3,7 @@ package com.tu.backend.rag;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.tu.backend.content.tiptap.TiptapDocumentWalker;
 import com.tu.backend.rag.dto.RagIndexDocument;
 import org.springframework.stereotype.Component;
 
@@ -84,6 +85,10 @@ public class RagDocumentExtractor {
 
     private String extractContent(JsonNode block, String type, String title) {
         if ("richtext".equals(type) || "richText".equals(type)) {
+            JsonNode document = block.get("document");
+            if (TiptapDocumentWalker.isDocument(document)) {
+                return firstNonBlank(TiptapDocumentWalker.extractPlainText(document), title);
+            }
             return firstNonBlank(textValue(block, "content"), title);
         }
         if ("table".equals(type)) {

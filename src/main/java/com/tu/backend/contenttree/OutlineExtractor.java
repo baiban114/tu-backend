@@ -3,6 +3,7 @@ package com.tu.backend.contenttree;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.tu.backend.content.tiptap.TiptapDocumentWalker;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -150,9 +151,19 @@ public final class OutlineExtractor {
         String type = textValue(block, "type");
         String blockId = textValue(block, "id");
         if ("richtext".equals(type) || "richText".equals(type)) {
-            String content = textValue(block, "content");
-            if (content != null && blockId != null) {
-                result.addAll(parseMarkdownHeadingLines(shiftContentHeadings(content, offset), blockId, seen));
+            JsonNode document = block.get("document");
+            if (TiptapDocumentWalker.isDocument(document) && blockId != null) {
+                for (TiptapDocumentWalker.TiptapHeading heading : TiptapDocumentWalker.extractHeadings(document, blockId)) {
+                    String key = heading.blockId() + ":" + heading.level() + ":" + heading.text();
+                    if (seen.add(key)) {
+                        result.add(new MarkdownHeading(heading.text(), heading.level() + offset, heading.blockId()));
+                    }
+                }
+            } else {
+                String content = textValue(block, "content");
+                if (content != null && blockId != null) {
+                    result.addAll(parseMarkdownHeadingLines(shiftContentHeadings(content, offset), blockId, seen));
+                }
             }
         } else if ("externalResource".equals(type) && blockId != null) {
             JsonNode snapshot = block.path("externalResource").path("snapshot");
@@ -195,9 +206,16 @@ public final class OutlineExtractor {
         }
         String type = textValue(block, "type");
         if ("richtext".equals(type) || "richText".equals(type)) {
-            String content = textValue(block, "content");
-            if (content != null) {
-                min = Math.min(min, minHeadingLevelInContent(content));
+            JsonNode document = block.get("document");
+            if (TiptapDocumentWalker.isDocument(document)) {
+                for (TiptapDocumentWalker.TiptapHeading heading : TiptapDocumentWalker.extractHeadings(document, textValue(block, "id"))) {
+                    min = Math.min(min, heading.level());
+                }
+            } else {
+                String content = textValue(block, "content");
+                if (content != null) {
+                    min = Math.min(min, minHeadingLevelInContent(content));
+                }
             }
         } else if ("externalResource".equals(type)) {
             String excerptText = textValue(block.path("externalResource").path("snapshot"), "excerptText");
@@ -277,6 +295,17 @@ public final class OutlineExtractor {
     private static String previewText(JsonNode block) {
         String type = textValue(block, "type");
         if ("richtext".equals(type) || "richText".equals(type)) {
+            JsonNode document = block.get("document");
+            if (TiptapDocumentWalker.isDocument(document)) {
+                String plain = TiptapDocumentWalker.extractPlainText(document);
+                if (plain.isBlank()) {
+                    return null;
+                }
+                if (plain.length() <= PREVIEW_MAX) {
+                    return plain;
+                }
+                return plain.substring(0, PREVIEW_MAX) + "…";
+            }
             String content = textValue(block, "content");
             if (content == null) {
                 return null;
@@ -322,6 +351,17 @@ public final class OutlineExtractor {
             return "外部资源";
         }
         if ("richtext".equals(type) || "richText".equals(type)) {
+            JsonNode document = block.get("document");
+            if (TiptapDocumentWalker.isDocument(document)) {
+                String plain = TiptapDocumentWalker.extractPlainText(document);
+                if (plain.isBlank()) {
+                    return null;
+                }
+                if (plain.length() <= PREVIEW_MAX) {
+                    return plain;
+                }
+                return plain.substring(0, PREVIEW_MAX) + "…";
+            }
             String content = textValue(block, "content");
             if (content != null) {
                 String plain = content
