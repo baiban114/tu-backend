@@ -17,7 +17,9 @@ import java.time.LocalDateTime;
     indexes = {
         @Index(name = "idx_kr_kb_from", columnList = "kb_id, from_locator"),
         @Index(name = "idx_kr_kb_to", columnList = "kb_id, to_locator"),
-        @Index(name = "idx_kr_kb_type", columnList = "kb_id, relation_type_key")
+        @Index(name = "idx_kr_kb_type", columnList = "kb_id, relation_type_key"),
+        @Index(name = "idx_kr_kb_from_point", columnList = "kb_id, from_point_id"),
+        @Index(name = "idx_kr_kb_to_point", columnList = "kb_id, to_point_id")
     }
 )
 public class KnowledgeRelationEntity {
@@ -32,20 +34,26 @@ public class KnowledgeRelationEntity {
     @Column(name = "relation_type_key", length = 64, nullable = false)
     private String relationTypeKey;
 
-    @Column(name = "from_anchor_kind", length = 32, nullable = false)
+    @Column(name = "from_point_id", length = 64)
+    private String fromPointId;
+
+    @Column(name = "to_point_id", length = 64)
+    private String toPointId;
+
+    @Column(name = "from_anchor_kind", length = 32)
     private String fromAnchorKind;
 
-    @Column(name = "from_locator", length = 512, nullable = false)
+    @Column(name = "from_locator", length = 512)
     private String fromLocator;
 
     @Lob
     @Column(name = "from_snapshot_json", columnDefinition = "TEXT")
     private String fromSnapshotJson;
 
-    @Column(name = "to_anchor_kind", length = 32, nullable = false)
+    @Column(name = "to_anchor_kind", length = 32)
     private String toAnchorKind;
 
-    @Column(name = "to_locator", length = 512, nullable = false)
+    @Column(name = "to_locator", length = 512)
     private String toLocator;
 
     @Lob
@@ -105,6 +113,22 @@ public class KnowledgeRelationEntity {
 
     public void setRelationTypeKey(String relationTypeKey) {
         this.relationTypeKey = relationTypeKey;
+    }
+
+    public String getFromPointId() {
+        return fromPointId;
+    }
+
+    public void setFromPointId(String fromPointId) {
+        this.fromPointId = fromPointId;
+    }
+
+    public String getToPointId() {
+        return toPointId;
+    }
+
+    public void setToPointId(String toPointId) {
+        this.toPointId = toPointId;
     }
 
     public String getFromAnchorKind() {

@@ -14,6 +14,7 @@ import com.tu.backend.knowledge.repository.KnowledgeBaseRepository;
 import com.tu.backend.page.dto.PageItemDto;
 import com.tu.backend.page.entity.PageEntity;
 import com.tu.backend.page.repository.PageRepository;
+import com.tu.backend.knowledgerelation.service.KnowledgePointService;
 import com.tu.backend.knowledgerelation.service.KnowledgeRelationService;
 import com.tu.backend.page.service.PageService;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -37,6 +38,7 @@ public class KnowledgeBaseService {
     private final PageContentRepository pageContentRepository;
     private final ObjectMapper objectMapper;
     private final KnowledgeRelationService knowledgeRelationService;
+    private final KnowledgePointService knowledgePointService;
 
     public KnowledgeBaseService(
         KnowledgeBaseRepository knowledgeBaseRepository,
@@ -44,7 +46,8 @@ public class KnowledgeBaseService {
         PageRepository pageRepository,
         PageContentRepository pageContentRepository,
         ObjectMapper objectMapper,
-        KnowledgeRelationService knowledgeRelationService
+        KnowledgeRelationService knowledgeRelationService,
+        KnowledgePointService knowledgePointService
     ) {
         this.knowledgeBaseRepository = knowledgeBaseRepository;
         this.pageService = pageService;
@@ -52,6 +55,7 @@ public class KnowledgeBaseService {
         this.pageContentRepository = pageContentRepository;
         this.objectMapper = objectMapper;
         this.knowledgeRelationService = knowledgeRelationService;
+        this.knowledgePointService = knowledgePointService;
     }
 
     @Transactional(readOnly = true)
@@ -127,6 +131,7 @@ public class KnowledgeBaseService {
         KnowledgeBaseEntity entity = knowledgeBaseRepository.findById(id)
             .orElseThrow(() -> new BusinessException(40001, "knowledge base not found"));
         pageService.deleteByKnowledgeBaseId(id);
+        knowledgePointService.deleteByKbId(id);
         knowledgeRelationService.deleteByKbId(id);
         knowledgeBaseRepository.delete(entity);
     }

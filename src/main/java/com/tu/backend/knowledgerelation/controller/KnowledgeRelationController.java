@@ -7,6 +7,7 @@ import com.tu.backend.knowledgerelation.dto.CreateRelationTypeRequest;
 import com.tu.backend.knowledgerelation.dto.KnowledgeRelationDto;
 import com.tu.backend.knowledgerelation.dto.RelationTypeDefDto;
 import com.tu.backend.knowledgerelation.dto.RelationsByAnchorDto;
+import com.tu.backend.knowledgerelation.dto.RelationsByPointDto;
 import com.tu.backend.knowledgerelation.service.KnowledgeRelationService;
 import com.tu.backend.knowledgerelation.service.RelationTypeService;
 import jakarta.validation.Valid;
@@ -53,12 +54,21 @@ public class KnowledgeRelationController {
     public ApiResponse<PageResponse<KnowledgeRelationDto>> listRelations(
         @PathVariable String kbId,
         @RequestParam(required = false) String locator,
+        @RequestParam(required = false) String pointId,
         @RequestParam(required = false) String relationTypeKey,
         @RequestParam(required = false) String q,
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "10") int pageSize
     ) {
-        return ApiResponse.success(knowledgeRelationService.listRelations(kbId, locator, relationTypeKey, q, page, pageSize));
+        return ApiResponse.success(knowledgeRelationService.listRelations(kbId, locator, pointId, relationTypeKey, q, page, pageSize));
+    }
+
+    @GetMapping("/knowledge-points/{pointId}/relations")
+    public ApiResponse<RelationsByPointDto> listByPoint(
+        @PathVariable String pointId,
+        @RequestParam String kbId
+    ) {
+        return ApiResponse.success(knowledgeRelationService.listByPoint(kbId, pointId));
     }
 
     @GetMapping("/kbs/{kbId}/relations/by-anchor")

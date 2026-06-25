@@ -16,6 +16,10 @@ public interface KnowledgeRelationRepository extends JpaRepository<KnowledgeRela
 
     List<KnowledgeRelationEntity> findByKbIdAndToLocatorOrderByUpdatedAtDesc(String kbId, String toLocator);
 
+    List<KnowledgeRelationEntity> findByKbIdAndFromPointIdOrderByUpdatedAtDesc(String kbId, String fromPointId);
+
+    List<KnowledgeRelationEntity> findByKbIdAndToPointIdOrderByUpdatedAtDesc(String kbId, String toPointId);
+
     @Modifying
     @Query("""
         DELETE FROM KnowledgeRelationEntity e

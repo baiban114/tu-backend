@@ -21,15 +21,18 @@ public class KnowledgeRelationRebuildService {
 
     private final PageRepository pageRepository;
     private final KnowledgeRelationService knowledgeRelationService;
+    private final KnowledgePointService knowledgePointService;
     private final ObjectMapper objectMapper;
 
     public KnowledgeRelationRebuildService(
         PageRepository pageRepository,
         KnowledgeRelationService knowledgeRelationService,
+        KnowledgePointService knowledgePointService,
         ObjectMapper objectMapper
     ) {
         this.pageRepository = pageRepository;
         this.knowledgeRelationService = knowledgeRelationService;
+        this.knowledgePointService = knowledgePointService;
         this.objectMapper = objectMapper;
     }
 
@@ -44,10 +47,8 @@ public class KnowledgeRelationRebuildService {
 
         ArrayNode blocks = deserializeBlocks(blocksJson);
         List<KnowledgeRelationEntity> migrated = new ArrayList<>();
-        int rootIndex = 0;
         for (JsonNode block : blocks) {
             collectFromBlock(pageId, kbId, block, migrated);
-            rootIndex += 1;
         }
         knowledgeRelationService.saveMigratedBatch(migrated);
     }
@@ -75,13 +76,9 @@ public class KnowledgeRelationRebuildService {
                         if (resourceExcerptId == null || resourceExcerptId.isBlank()) {
                             return;
                         }
-                        migrated.add(knowledgeRelationService.buildMigratedEntity(
-                            kbId,
-                            "source",
-                            headingAnchor(pageId, headingBlockId, block),
-                            resourceExcerptAnchor(resourceItemId, resourceExcerptId, null),
-                            null
-                        ));
+                        KnowledgeAnchorDto from = headingAnchor(pageId, headingBlockId, block);
+                        KnowledgeAnchorDto to = resourceExcerptAnchor(resourceItemId, resourceExcerptId, null);
+                        addMigratedPointRelation(kbId, "source", from, to, null, migrated);
                     }
 
                     @Override
@@ -99,6 +96,37 @@ public class KnowledgeRelationRebuildService {
             }
             extractBasisAnnotations(pageId, kbId, block, migrated);
         }
+    }
+
+    private void addMigratedPointRelation(
+        String kbId,
+        String relationTypeKey,
+        KnowledgeAnchorDto from,
+        KnowledgeAnchorDto to,
+        String note,
+        List<KnowledgeRelationEntity> migrated
+    ) {
+        String fromPointId = knowledgePointService.ensurePointForAnchor(
+            kbId,
+            from,
+            titleFromSnapshot(from.snapshot()),
+            null
+        );
+        String toPointId = knowledgePointService.ensurePointForAnchor(
+            kbId,
+            to,
+            titleFromSnapshot(to.snapshot()),
+            null
+        );
+        migrated.add(knowledgeRelationService.buildMigratedPointEntity(
+            kbId,
+            relationTypeKey,
+            fromPointId,
+            toPointId,
+            from,
+            to,
+            note
+        ));
     }
 
     private void extractBasisAnnotations(String pageId, String kbId, JsonNode block, List<KnowledgeRelationEntity> migrated) {
@@ -135,13 +163,12 @@ public class KnowledgeRelationRebuildService {
             if (!selectedText.isBlank()) {
                 fromSnapshot.put("title", truncate(selectedText, 120));
             }
-            migrated.add(knowledgeRelationService.buildMigratedEntity(
-                kbId,
-                "basis",
-                new KnowledgeAnchorDto("annotation", "page:" + pageId + ":annotation:" + annId, fromSnapshot),
-                to,
-                text(ann.get("note"))
-            ));
+            KnowledgeAnchorDto from = new KnowledgeAnchorDto(
+                "annotation",
+                "page:" + pageId + ":annotation:" + annId,
+                fromSnapshot
+            );
+            addMigratedPointRelation(kbId, "basis", from, to, text(ann.get("note")), migrated);
         }
     }
 
@@ -199,6 +226,17 @@ public class KnowledgeRelationRebuildService {
             putIfPresent(snapshot, "resourceTypeName", text(snap.get("resourceTypeName")));
         }
         return snapshot;
+    }
+
+    private String titleFromSnapshot(Map<String, Object> snapshot) {
+        if (snapshot == null) {
+            return null;
+        }
+        Object title = snapshot.get("title");
+        if (title == null) {
+            title = snapshot.get("excerptTitle");
+        }
+        return title == null ? null : title.toString();
     }
 
     private void putIfPresent(Map<String, Object> map, String key, String value) {

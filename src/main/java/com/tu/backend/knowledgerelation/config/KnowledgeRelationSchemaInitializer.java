@@ -85,7 +85,156 @@ public class KnowledgeRelationSchemaInitializer implements ApplicationRunner {
               index idx_kr_kb_type (kb_id, relation_type_key)
             )
             """);
+        ensureKnowledgePointTables("mysql");
+        migrateKnowledgeRelationPointColumns("mysql");
         log.info("ensured knowledge relation tables for mysql");
+    }
+
+    private void ensureKnowledgePointTables(String database) {
+        if ("mysql".equals(database)) {
+            jdbcTemplate.execute("""
+                create table if not exists knowledge_point (
+                  id varchar(64) not null primary key,
+                  kb_id varchar(64) not null,
+                  parent_id varchar(64) null,
+                  title varchar(255) not null,
+                  summary longtext null,
+                  status varchar(16) not null,
+                  estimated_hours decimal(10,2) null,
+                  sort_order int not null,
+                  metadata_json longtext null,
+                  created_at datetime(6) not null,
+                  updated_at datetime(6) not null
+                )
+                """);
+            jdbcTemplate.execute("""
+                create table if not exists knowledge_point_anchor (
+                  id varchar(64) not null primary key,
+                  knowledge_point_id varchar(64) not null,
+                  anchor_kind varchar(32) not null,
+                  locator varchar(512) not null,
+                  snapshot_json longtext null,
+                  role varchar(32) not null,
+                  is_primary bit not null,
+                  created_at datetime(6) not null,
+                  updated_at datetime(6) not null,
+                  index idx_kpa_point (knowledge_point_id),
+                  index idx_kpa_locator (locator)
+                )
+                """);
+            return;
+        }
+        if ("postgresql".equals(database)) {
+            jdbcTemplate.execute("""
+                create table if not exists knowledge_point (
+                  id varchar(64) not null primary key,
+                  kb_id varchar(64) not null,
+                  parent_id varchar(64) null,
+                  title varchar(255) not null,
+                  summary text null,
+                  status varchar(16) not null,
+                  estimated_hours numeric(10,2) null,
+                  sort_order int not null,
+                  metadata_json text null,
+                  created_at timestamp(6) not null,
+                  updated_at timestamp(6) not null
+                )
+                """);
+            jdbcTemplate.execute("""
+                create table if not exists knowledge_point_anchor (
+                  id varchar(64) not null primary key,
+                  knowledge_point_id varchar(64) not null,
+                  anchor_kind varchar(32) not null,
+                  locator varchar(512) not null,
+                  snapshot_json text null,
+                  role varchar(32) not null,
+                  is_primary boolean not null,
+                  created_at timestamp(6) not null,
+                  updated_at timestamp(6) not null
+                )
+                """);
+            jdbcTemplate.execute("create index if not exists idx_kpa_point on knowledge_point_anchor (knowledge_point_id)");
+            jdbcTemplate.execute("create index if not exists idx_kpa_locator on knowledge_point_anchor (locator)");
+            return;
+        }
+        if ("h2".equals(database)) {
+            jdbcTemplate.execute("""
+                create table if not exists knowledge_point (
+                  id varchar(64) not null primary key,
+                  kb_id varchar(64) not null,
+                  parent_id varchar(64) null,
+                  title varchar(255) not null,
+                  summary clob null,
+                  status varchar(16) not null,
+                  estimated_hours decimal(10,2) null,
+                  sort_order int not null,
+                  metadata_json clob null,
+                  created_at timestamp not null,
+                  updated_at timestamp not null
+                )
+                """);
+            jdbcTemplate.execute("""
+                create table if not exists knowledge_point_anchor (
+                  id varchar(64) not null primary key,
+                  knowledge_point_id varchar(64) not null,
+                  anchor_kind varchar(32) not null,
+                  locator varchar(512) not null,
+                  snapshot_json clob null,
+                  role varchar(32) not null,
+                  is_primary boolean not null,
+                  created_at timestamp not null,
+                  updated_at timestamp not null
+                )
+                """);
+            jdbcTemplate.execute("create index if not exists idx_kpa_point on knowledge_point_anchor (knowledge_point_id)");
+            jdbcTemplate.execute("create index if not exists idx_kpa_locator on knowledge_point_anchor (locator)");
+        }
+    }
+
+    private void migrateKnowledgeRelationPointColumns(String database) {
+        if (!tableExists("knowledge_relation")) {
+            return;
+        }
+        addColumnIfMissing("knowledge_relation", "from_point_id", switch (database) {
+            case "mysql" -> "varchar(64) null";
+            case "postgresql" -> "varchar(64)";
+            default -> "varchar(64)";
+        });
+        addColumnIfMissing("knowledge_relation", "to_point_id", switch (database) {
+            case "mysql" -> "varchar(64) null";
+            case "postgresql" -> "varchar(64)";
+            default -> "varchar(64)";
+        });
+        relaxColumnNullable(database, "knowledge_relation", "from_anchor_kind");
+        relaxColumnNullable(database, "knowledge_relation", "from_locator");
+        relaxColumnNullable(database, "knowledge_relation", "to_anchor_kind");
+        relaxColumnNullable(database, "knowledge_relation", "to_locator");
+    }
+
+    private void addColumnIfMissing(String tableName, String columnName, String sqlType) {
+        if (columnExists(tableName, columnName)) {
+            return;
+        }
+        jdbcTemplate.execute("alter table " + tableName + " add column " + columnName + " " + sqlType);
+    }
+
+    private void relaxColumnNullable(String database, String tableName, String columnName) {
+        if (!columnExists(tableName, columnName)) {
+            return;
+        }
+        try {
+            if ("mysql".equals(database)) {
+                String type = jdbcTemplate.queryForObject(
+                    "select column_type from information_schema.columns where table_schema = database() and table_name = ? and column_name = ?",
+                    String.class,
+                    tableName,
+                    columnName
+                );
+                jdbcTemplate.execute("alter table " + tableName + " modify column " + columnName + " " + type + " null");
+            }
+        } catch (Exception ex) {
+            log.warn("failed to relax nullable column {}.{}", tableName, columnName, ex);
+        }
     }
 
     private void ensurePostgresqlSchema() {
@@ -128,6 +277,8 @@ public class KnowledgeRelationSchemaInitializer implements ApplicationRunner {
         jdbcTemplate.execute("create index if not exists idx_kr_kb_from on knowledge_relation (kb_id, from_locator)");
         jdbcTemplate.execute("create index if not exists idx_kr_kb_to on knowledge_relation (kb_id, to_locator)");
         jdbcTemplate.execute("create index if not exists idx_kr_kb_type on knowledge_relation (kb_id, relation_type_key)");
+        ensureKnowledgePointTables("postgresql");
+        migrateKnowledgeRelationPointColumns("postgresql");
         log.info("ensured knowledge relation tables for postgresql");
     }
 
@@ -171,6 +322,8 @@ public class KnowledgeRelationSchemaInitializer implements ApplicationRunner {
         jdbcTemplate.execute("create index if not exists idx_kr_kb_from on knowledge_relation (kb_id, from_locator)");
         jdbcTemplate.execute("create index if not exists idx_kr_kb_to on knowledge_relation (kb_id, to_locator)");
         jdbcTemplate.execute("create index if not exists idx_kr_kb_type on knowledge_relation (kb_id, relation_type_key)");
+        ensureKnowledgePointTables("h2");
+        migrateKnowledgeRelationPointColumns("h2");
         log.info("ensured knowledge relation tables for h2");
     }
 

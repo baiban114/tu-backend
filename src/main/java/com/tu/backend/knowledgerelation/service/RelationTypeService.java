@@ -37,6 +37,7 @@ public class RelationTypeService {
         seedSystemType("case", "案例", "#1677ff", false);
         seedSystemType("cites", "引用", "#722ed1", false);
         seedSystemType("related", "相关", "#8c8c8c", true);
+        seedSystemType("prerequisite", "前置", "#fa8c16", false);
     }
 
     private void seedSystemType(String key, String label, String color, boolean bidirectional) {
