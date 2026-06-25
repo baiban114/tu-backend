@@ -7,7 +7,8 @@ import com.tu.backend.content.repository.PageContentRepository;
 import com.tu.backend.index.PageIndexCoordinator;
 import com.tu.backend.page.entity.PageEntity;
 import com.tu.backend.page.repository.PageRepository;
-import com.tu.backend.reference.service.ReferenceService;
+import com.tu.backend.knowledgerelation.service.KnowledgeRelationRebuildService;
+import com.tu.backend.knowledgerelation.service.KnowledgeRelationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,6 +37,10 @@ class PageContentServiceDocumentTest {
     private PageIndexCoordinator pageIndexCoordinator;
     @Mock
     private ReferenceService referenceService;
+    @Mock
+    private KnowledgeRelationRebuildService knowledgeRelationRebuildService;
+    @Mock
+    private KnowledgeRelationService knowledgeRelationService;
 
     private PageContentService service;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -47,7 +52,9 @@ class PageContentServiceDocumentTest {
             pageRepository,
             objectMapper,
             pageIndexCoordinator,
-            referenceService
+            referenceService,
+            knowledgeRelationRebuildService,
+            knowledgeRelationService
         );
     }
 
@@ -81,5 +88,6 @@ class PageContentServiceDocumentTest {
         assertThat(blocks.get(0).path("document").path("type").asText()).isEqualTo("doc");
         assertThat(blocks.get(0).path("metadata").path("schemaVersion").asInt()).isEqualTo(2);
         verify(referenceService).rebuildPageReferences(eq(pageId), any());
+        verify(knowledgeRelationRebuildService).rebuildPageRelations(eq(pageId), any());
     }
 }

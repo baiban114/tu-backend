@@ -13,6 +13,8 @@ import com.tu.backend.page.entity.PageEntity;
 import com.tu.backend.page.repository.PageRepository;
 import com.tu.backend.reference.service.ReferenceService;
 import com.tu.backend.index.PageIndexCoordinator;
+import com.tu.backend.knowledgerelation.service.KnowledgeRelationRebuildService;
+import com.tu.backend.knowledgerelation.service.KnowledgeRelationService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,19 +36,25 @@ public class PageContentService {
     private final ObjectMapper objectMapper;
     private final PageIndexCoordinator pageIndexCoordinator;
     private final ReferenceService referenceService;
+    private final KnowledgeRelationRebuildService knowledgeRelationRebuildService;
+    private final KnowledgeRelationService knowledgeRelationService;
 
     public PageContentService(
         PageContentRepository pageContentRepository,
         PageRepository pageRepository,
         ObjectMapper objectMapper,
         PageIndexCoordinator pageIndexCoordinator,
-        ReferenceService referenceService
+        ReferenceService referenceService,
+        KnowledgeRelationRebuildService knowledgeRelationRebuildService,
+        KnowledgeRelationService knowledgeRelationService
     ) {
         this.pageContentRepository = pageContentRepository;
         this.pageRepository = pageRepository;
         this.objectMapper = objectMapper;
         this.pageIndexCoordinator = pageIndexCoordinator;
         this.referenceService = referenceService;
+        this.knowledgeRelationRebuildService = knowledgeRelationRebuildService;
+        this.knowledgeRelationService = knowledgeRelationService;
     }
 
     @Transactional(readOnly = true)
@@ -71,6 +79,7 @@ public class PageContentService {
 
         PageContentEntity saved = pageContentRepository.save(entity);
         referenceService.rebuildPageReferences(saved.getPageId(), saved.getBlocksJson());
+        knowledgeRelationRebuildService.rebuildPageRelations(saved.getPageId(), saved.getBlocksJson());
         pageIndexCoordinator.onPageContentChanged(saved.getPageId());
         return toPageContentDto(saved.getPageId(), deserializeBlocks(saved.getBlocksJson()));
     }
@@ -81,6 +90,7 @@ public class PageContentService {
             return;
         }
         referenceService.deleteByPageIds(pageIds);
+        knowledgeRelationService.deleteByPageIds(pageIds);
         pageContentRepository.deleteByPageIdIn(pageIds);
     }
 

@@ -14,6 +14,7 @@ import com.tu.backend.knowledge.repository.KnowledgeBaseRepository;
 import com.tu.backend.page.dto.PageItemDto;
 import com.tu.backend.page.entity.PageEntity;
 import com.tu.backend.page.repository.PageRepository;
+import com.tu.backend.knowledgerelation.service.KnowledgeRelationService;
 import com.tu.backend.page.service.PageService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -35,19 +36,22 @@ public class KnowledgeBaseService {
     private final PageRepository pageRepository;
     private final PageContentRepository pageContentRepository;
     private final ObjectMapper objectMapper;
+    private final KnowledgeRelationService knowledgeRelationService;
 
     public KnowledgeBaseService(
         KnowledgeBaseRepository knowledgeBaseRepository,
         PageService pageService,
         PageRepository pageRepository,
         PageContentRepository pageContentRepository,
-        ObjectMapper objectMapper
+        ObjectMapper objectMapper,
+        KnowledgeRelationService knowledgeRelationService
     ) {
         this.knowledgeBaseRepository = knowledgeBaseRepository;
         this.pageService = pageService;
         this.pageRepository = pageRepository;
         this.pageContentRepository = pageContentRepository;
         this.objectMapper = objectMapper;
+        this.knowledgeRelationService = knowledgeRelationService;
     }
 
     @Transactional(readOnly = true)
@@ -123,6 +127,7 @@ public class KnowledgeBaseService {
         KnowledgeBaseEntity entity = knowledgeBaseRepository.findById(id)
             .orElseThrow(() -> new BusinessException(40001, "knowledge base not found"));
         pageService.deleteByKnowledgeBaseId(id);
+        knowledgeRelationService.deleteByKbId(id);
         knowledgeBaseRepository.delete(entity);
     }
 
