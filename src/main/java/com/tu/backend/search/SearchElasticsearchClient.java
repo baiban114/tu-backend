@@ -97,7 +97,7 @@ public class SearchElasticsearchClient {
     public SearchResponse<SearchDocument> search(String query, int limit) throws IOException {
         return client.search(s -> s
             .index(properties.getIndex())
-            .size(Math.min(Math.max(limit, 1), 50))
+            .size(Math.clamp(limit, 1, 50))
             .query(q -> q.multiMatch(m -> m
                 .query(query)
                 .fields("title^3", "pageTitle^2", "body")

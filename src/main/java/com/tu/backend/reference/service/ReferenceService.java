@@ -44,7 +44,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -53,8 +52,8 @@ import java.util.regex.Pattern;
 public class ReferenceService {
 
     private static final String LINK_RESOURCE_TYPE_CODE = "web-link";
-    private static final Pattern MARKDOWN_LINK_PATTERN = Pattern.compile("!?(?:\\[([^\\]]*)\\]\\(([^)\\s]+)(?:\\s+\\\"[^\\\"]*\\\")?\\))");
-    private static final Pattern HTML_IMAGE_PATTERN = Pattern.compile("<img\\b[^>]*?src=\\\"([^\\\"]+)\\\"[^>]*?(?:alt=\\\"([^\\\"]*)\\\")?[^>]*?>", Pattern.CASE_INSENSITIVE);
+    private static final Pattern MARKDOWN_LINK_PATTERN = Pattern.compile("!?\\[([^\\x5D]*)\\]\\(([^)\\s]+)(?:\\s+\"[^\"]*\")?\\)");
+    private static final Pattern HTML_IMAGE_PATTERN = Pattern.compile("<img\\b[^>]*?src=\"([^\"]+)\"[^>]*?(?:alt=\"([^\"]*)\")?[^>]*?>", Pattern.CASE_INSENSITIVE);
 
     private final InternalReferenceRecordRepository internalReferenceRepository;
     private final ExternalReferenceOccurrenceRepository externalReferenceRepository;
@@ -108,13 +107,12 @@ public class ReferenceService {
         String normalizedQuery = normalize(q).toLowerCase(Locale.ROOT);
 
         int safePage = Math.max(0, page);
-        int safePageSize = Math.max(1, Math.min(pageSize, 200));
+        int safePageSize = Math.clamp(pageSize, 1, 200);
 
         Map<String, PageEntity> pageMap = loadPageMap();
         Map<String, PageContentContext> pageContentMap = loadPageContentContextMap();
         Map<String, ResourceItemEntity> resourceItemMap = loadResourceItemMap();
         Map<String, ResourceExcerptEntity> resourceExcerptMap = loadResourceExcerptMap();
-        Map<String, ResourceWorkEntity> resourceWorkMap = loadResourceWorkMap();
         Map<String, ResourceTypeEntity> resourceTypeMap = loadResourceTypeMap();
 
         List<ReferenceItemDto> allItems = new ArrayList<>();
@@ -132,7 +130,7 @@ public class ReferenceService {
         }
         if (includeExternal) {
             externalReferenceRepository.findAllByOrderByUpdatedAtDescCreatedAtDesc().forEach(entity -> {
-                ReferenceItemDto dto = toExternalDto(entity, pageMap, pageContentMap, resourceItemMap, resourceWorkMap, resourceTypeMap);
+                ReferenceItemDto dto = toExternalDto(entity, pageMap, pageContentMap, resourceItemMap, resourceTypeMap);
                 if (matches(dto, normalizedPageId, normalizedResourceItemId, normalizedStatus, normalizedQuery)) {
                     allItems.add(dto);
                 }
@@ -144,7 +142,6 @@ public class ReferenceService {
                     pageContentMap,
                     resourceItemMap,
                     resourceExcerptMap,
-                    resourceWorkMap,
                     resourceTypeMap
                 );
                 if (matches(dto, normalizedPageId, normalizedResourceItemId, normalizedStatus, normalizedQuery)) {
@@ -207,7 +204,6 @@ public class ReferenceService {
             loadPageMap(),
             loadPageContentContextMap(),
             loadResourceItemMap(),
-            loadResourceWorkMap(),
             loadResourceTypeMap()
         );
     }
@@ -224,13 +220,11 @@ public class ReferenceService {
     public void rebuildPageReferences(String pageId, String blocksJson) {
         ArrayNode blocks = deserializeBlocksAsArrayNode(blocksJson);
         Map<ExternalReferenceKey, ExternalReferenceOccurrenceEntity> existingExternalMap = new LinkedHashMap<>();
-        externalReferenceRepository.findByPageIdInOrderByUpdatedAtDescCreatedAtDesc(List.of(pageId)).forEach(entity -> {
-            existingExternalMap.put(ExternalReferenceKey.from(entity), entity);
-        });
+        externalReferenceRepository.findByPageIdInOrderByUpdatedAtDescCreatedAtDesc(List.of(pageId))
+            .forEach(entity -> existingExternalMap.put(ExternalReferenceKey.from(entity), entity));
         Map<ExternalResourceReferenceKey, ExternalResourceReferenceEntity> existingResourceMap = new LinkedHashMap<>();
-        externalResourceReferenceRepository.findByPageIdInOrderByUpdatedAtDescCreatedAtDesc(List.of(pageId)).forEach(entity -> {
-            existingResourceMap.put(ExternalResourceReferenceKey.from(entity), entity);
-        });
+        externalResourceReferenceRepository.findByPageIdInOrderByUpdatedAtDescCreatedAtDesc(List.of(pageId))
+            .forEach(entity -> existingResourceMap.put(ExternalResourceReferenceKey.from(entity), entity));
 
         internalReferenceRepository.deleteByPageId(pageId);
         externalReferenceRepository.deleteByPageId(pageId);
@@ -283,10 +277,6 @@ public class ReferenceService {
             && pageContentRepository.count() > 0;
     }
 
-    @Transactional(readOnly = true)
-    public boolean hasResourceItemReferences(String resourceItemId) {
-        return !externalReferenceRepository.findByResourceItemId(resourceItemId).isEmpty();
-    }
 
     private void collectBlockReferences(
         String pageId,
@@ -361,7 +351,6 @@ public class ReferenceService {
         extractHeadingSourceReferences(
             pageId,
             blockId,
-            blockPath,
             text(block.get("content")),
             externalResourceRecords,
             existingResourceMap
@@ -576,7 +565,6 @@ public class ReferenceService {
     private void extractHeadingSourceReferences(
         String pageId,
         String blockId,
-        String blockPath,
         String content,
         List<ExternalResourceReferenceEntity> externalResourceRecords,
         Map<ExternalResourceReferenceKey, ExternalResourceReferenceEntity> existingResourceMap
@@ -634,11 +622,10 @@ public class ReferenceService {
         List<ExternalReferenceOccurrenceEntity> externalRecords,
         Map<ExternalReferenceKey, ExternalReferenceOccurrenceEntity> existingExternalMap
     ) {
-        if (!(graphData instanceof JsonNode) || !((JsonNode) graphData).isObject()) {
+        if (graphData == null || !graphData.isObject()) {
             return;
         }
-        JsonNode node = (JsonNode) graphData;
-        JsonNode nodes = node.get("nodes");
+        JsonNode nodes = graphData.get("nodes");
         if (nodes instanceof ArrayNode nodeArray) {
             for (int index = 0; index < nodeArray.size(); index += 1) {
                 JsonNode graphNode = nodeArray.get(index);
@@ -672,7 +659,7 @@ public class ReferenceService {
             }
         }
 
-        JsonNode edges = node.get("edges");
+        JsonNode edges = graphData.get("edges");
         if (edges instanceof ArrayNode edgeArray) {
             for (int index = 0; index < edgeArray.size(); index += 1) {
                 JsonNode edgeNode = edgeArray.get(index);
@@ -713,16 +700,14 @@ public class ReferenceService {
             return;
         }
         JsonNode rows = tableData.get("rows");
-        if (!(rows instanceof ArrayNode)) {
+        if (!(rows instanceof ArrayNode rowArray)) {
             return;
         }
-        ArrayNode rowArray = (ArrayNode) rows;
         for (int row = 0; row < rowArray.size(); row += 1) {
             JsonNode rowNode = rowArray.get(row);
-            if (!(rowNode instanceof ArrayNode)) {
+            if (!(rowNode instanceof ArrayNode cellArray)) {
                 continue;
             }
-            ArrayNode cellArray = (ArrayNode) rowNode;
             for (int column = 0; column < cellArray.size(); column += 1) {
                 extractExternalReferences(
                     pageId,
@@ -899,7 +884,6 @@ public class ReferenceService {
         Map<String, PageEntity> pageMap,
         Map<String, PageContentContext> pageContentMap,
         Map<String, ResourceItemEntity> resourceItemMap,
-        Map<String, ResourceWorkEntity> resourceWorkMap,
         Map<String, ResourceTypeEntity> resourceTypeMap
     ) {
         PageEntity sourcePage = pageMap.get(entity.getPageId());
@@ -909,7 +893,6 @@ public class ReferenceService {
             .findFirst()
             .orElse(null);
         ResourceItemEntity resourceItem = resourceItemMap.get(entity.getResourceItemId());
-        ResourceWorkEntity resourceWork = resourceItem == null ? null : resourceWorkMap.get(resourceItem.getWorkId());
         ResourceTypeEntity resourceType = resourceItem == null ? null : resourceTypeMap.get(resourceItem.getTypeId());
         String status;
         if ("manual_unbound".equals(entity.getBindingMode()) || entity.getResourceItemId() == null) {
@@ -959,7 +942,6 @@ public class ReferenceService {
         Map<String, PageContentContext> pageContentMap,
         Map<String, ResourceItemEntity> resourceItemMap,
         Map<String, ResourceExcerptEntity> resourceExcerptMap,
-        Map<String, ResourceWorkEntity> resourceWorkMap,
         Map<String, ResourceTypeEntity> resourceTypeMap
     ) {
         PageEntity sourcePage = pageMap.get(entity.getPageId());
@@ -970,7 +952,6 @@ public class ReferenceService {
             .orElse(null);
         ResourceItemEntity resourceItem = resourceItemMap.get(entity.getResourceItemId());
         ResourceExcerptEntity excerpt = entity.getResourceExcerptId() == null ? null : resourceExcerptMap.get(entity.getResourceExcerptId());
-        ResourceWorkEntity resourceWork = resourceItem == null ? null : resourceWorkMap.get(resourceItem.getWorkId());
         ResourceTypeEntity resourceType = resourceItem == null ? null : resourceTypeMap.get(resourceItem.getTypeId());
         JsonNode snapshot = sourceBlock == null ? null : sourceBlock.node().path("externalResource").path("snapshot");
 
@@ -1031,15 +1012,13 @@ public class ReferenceService {
         String normalizedQuery
     ) {
         JsonNode metadata = block.node().get("metadata");
-        if (!(metadata instanceof JsonNode) || !((JsonNode) metadata).isObject()) {
+        if (metadata == null || !metadata.isObject()) {
             return;
         }
-        JsonNode metaNode = (JsonNode) metadata;
-        JsonNode annotations = metaNode.get("annotations");
-        if (!(annotations instanceof ArrayNode)) {
+        JsonNode annotations = metadata.get("annotations");
+        if (!(annotations instanceof ArrayNode annArray)) {
             return;
         }
-        ArrayNode annArray = (ArrayNode) annotations;
         for (JsonNode ann : annArray) {
             ReferenceItemDto dto = toAnnotationDto(ann, pageId, pageTitle, block);
             if (matches(dto, normalizedPageId, normalizedResourceItemId, normalizedStatus, normalizedQuery)) {
@@ -1216,9 +1195,9 @@ public class ReferenceService {
 
     private Map<String, PageContentContext> loadPageContentContextMap() {
         Map<String, PageContentContext> map = new HashMap<>();
-        pageContentRepository.findAll().forEach(content -> {
-            map.put(content.getPageId(), new PageContentContext(content.getPageId(), flattenBlocks(deserializeBlocksAsArrayNode(content.getBlocksJson()))));
-        });
+        pageContentRepository.findAll().forEach(content ->
+            map.put(content.getPageId(), new PageContentContext(content.getPageId(), flattenBlocks(deserializeBlocksAsArrayNode(content.getBlocksJson()))))
+        );
         return map;
     }
 
@@ -1255,12 +1234,6 @@ public class ReferenceService {
     private Map<String, ResourceExcerptEntity> loadResourceExcerptMap() {
         Map<String, ResourceExcerptEntity> map = new HashMap<>();
         resourceExcerptRepository.findAll().forEach(excerpt -> map.put(excerpt.getId(), excerpt));
-        return map;
-    }
-
-    private Map<String, ResourceWorkEntity> loadResourceWorkMap() {
-        Map<String, ResourceWorkEntity> map = new HashMap<>();
-        resourceWorkRepository.findAll().forEach(work -> map.put(work.getId(), work));
         return map;
     }
 

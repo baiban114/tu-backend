@@ -9,8 +9,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Walks Tiptap ProseMirror JSON documents stored in richtext blocks (schema v2).
+ * Walks ProseMirror JSON documents stored in {@code richtext} blocks (schema v2).
  */
+@SuppressWarnings("SpellCheckingInspection")
 public final class TiptapDocumentWalker {
 
     private static final Pattern TU_LINK_URL_PATTERN = Pattern.compile(
