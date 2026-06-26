@@ -5,14 +5,18 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tu.backend.common.BusinessException;
 import com.tu.backend.common.PageResponse;
+import com.tu.backend.knowledgerelation.dto.CreateKnowledgePointAliasRequest;
 import com.tu.backend.knowledgerelation.dto.CreateKnowledgePointAnchorRequest;
 import com.tu.backend.knowledgerelation.dto.CreateKnowledgePointRequest;
 import com.tu.backend.knowledgerelation.dto.KnowledgeAnchorDto;
+import com.tu.backend.knowledgerelation.dto.KnowledgePointAliasDto;
 import com.tu.backend.knowledgerelation.dto.KnowledgePointAnchorDto;
 import com.tu.backend.knowledgerelation.dto.KnowledgePointDto;
 import com.tu.backend.knowledgerelation.dto.UpdateKnowledgePointRequest;
+import com.tu.backend.knowledgerelation.entity.KnowledgePointAliasEntity;
 import com.tu.backend.knowledgerelation.entity.KnowledgePointAnchorEntity;
 import com.tu.backend.knowledgerelation.entity.KnowledgePointEntity;
+import com.tu.backend.knowledgerelation.repository.KnowledgePointAliasRepository;
 import com.tu.backend.knowledgerelation.repository.KnowledgePointAnchorRepository;
 import com.tu.backend.knowledgerelation.repository.KnowledgePointRepository;
 import com.tu.backend.knowledge.repository.KnowledgeBaseRepository;
@@ -20,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -27,6 +32,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Service
 public class KnowledgePointService {
@@ -36,17 +42,20 @@ public class KnowledgePointService {
 
     private final KnowledgePointRepository knowledgePointRepository;
     private final KnowledgePointAnchorRepository knowledgePointAnchorRepository;
+    private final KnowledgePointAliasRepository knowledgePointAliasRepository;
     private final KnowledgeBaseRepository knowledgeBaseRepository;
     private final ObjectMapper objectMapper;
 
     public KnowledgePointService(
         KnowledgePointRepository knowledgePointRepository,
         KnowledgePointAnchorRepository knowledgePointAnchorRepository,
+        KnowledgePointAliasRepository knowledgePointAliasRepository,
         KnowledgeBaseRepository knowledgeBaseRepository,
         ObjectMapper objectMapper
     ) {
         this.knowledgePointRepository = knowledgePointRepository;
         this.knowledgePointAnchorRepository = knowledgePointAnchorRepository;
+        this.knowledgePointAliasRepository = knowledgePointAliasRepository;
         this.knowledgeBaseRepository = knowledgeBaseRepository;
         this.objectMapper = objectMapper;
     }
@@ -54,7 +63,8 @@ public class KnowledgePointService {
     @Transactional(readOnly = true)
     public List<KnowledgePointDto> listTree(String kbId) {
         ensureKbExists(kbId);
-        return buildTree(knowledgePointRepository.findByKbIdOrderBySortOrderAscTitleAsc(kbId));
+        Map<String, List<String>> aliasesByPointId = loadAliasesByKb(kbId);
+        return buildTree(knowledgePointRepository.findByKbIdOrderBySortOrderAscTitleAsc(kbId), aliasesByPointId);
     }
 
     @Transactional(readOnly = true)
@@ -63,9 +73,10 @@ public class KnowledgePointService {
         String query = normalize(q).toLowerCase(Locale.ROOT);
         int safePage = Math.max(0, page);
         int safePageSize = Math.clamp(pageSize, 1, 200);
+        Map<String, List<String>> aliasesByPointId = loadAliasesByKb(kbId);
         List<KnowledgePointDto> all = knowledgePointRepository.findByKbIdOrderBySortOrderAscTitleAsc(kbId)
             .stream()
-            .map(this::toDto)
+            .map(entity -> toDto(entity, aliasesByPointId.getOrDefault(entity.getId(), List.of())))
             .filter(dto -> matchesQuery(dto, query))
             .toList();
         long total = all.size();
@@ -79,7 +90,9 @@ public class KnowledgePointService {
 
     @Transactional(readOnly = true)
     public KnowledgePointDto getPoint(String id) {
-        return toDto(findPoint(id));
+        KnowledgePointEntity entity = findPoint(id);
+        List<String> aliases = listAliasStrings(id);
+        return toDto(entity, aliases);
     }
 
     @Transactional
@@ -113,24 +126,43 @@ public class KnowledgePointService {
     @Transactional
     public KnowledgePointDto updatePoint(String id, UpdateKnowledgePointRequest request) {
         KnowledgePointEntity entity = findPoint(id);
-        if (request.parentId() != null) {
-            validateParent(entity.getKbId(), request.parentId());
-            entity.setParentId(blankToNull(request.parentId()));
+        boolean changed = false;
+
+        if (request.isParentIdPresent() || request.isSortOrderPresent()) {
+            String sourceParentId = entity.getParentId();
+            String targetParentId = request.isParentIdPresent()
+                ? blankToNull(request.getParentId())
+                : entity.getParentId();
+            validateParent(entity.getKbId(), targetParentId);
+            validateNotMoveToSelfOrDescendant(entity, targetParentId);
+            entity.setParentId(targetParentId);
+            Integer requestedOrder = request.isSortOrderPresent() ? request.getSortOrder() : 0;
+            entity.setSortOrder(reorderAndResolveSortOrder(entity, sourceParentId, targetParentId, requestedOrder));
+            changed = true;
         }
-        if (request.title() != null && !request.title().isBlank()) {
-            entity.setTitle(request.title().trim());
+        if (request.isTitlePresent() && request.getTitle() != null && !request.getTitle().isBlank()) {
+            entity.setTitle(request.getTitle().trim());
+            changed = true;
         }
-        if (request.summary() != null) {
-            entity.setSummary(blankToNull(request.summary()));
+        if (request.isSummaryPresent()) {
+            entity.setSummary(blankToNull(request.getSummary()));
+            changed = true;
         }
-        if (request.status() != null && !request.status().isBlank()) {
-            entity.setStatus(request.status().trim());
+        if (request.isStatusPresent() && request.getStatus() != null && !request.getStatus().isBlank()) {
+            entity.setStatus(request.getStatus().trim());
+            changed = true;
         }
-        if (request.estimatedHours() != null) {
-            entity.setEstimatedHours(BigDecimal.valueOf(request.estimatedHours()));
+        if (request.isEstimatedHoursPresent()) {
+            if (request.getEstimatedHours() != null) {
+                entity.setEstimatedHours(BigDecimal.valueOf(request.getEstimatedHours()));
+            } else {
+                entity.setEstimatedHours(null);
+            }
+            changed = true;
         }
-        if (request.sortOrder() != null) {
-            entity.setSortOrder(request.sortOrder());
+
+        if (!changed) {
+            throw new BusinessException(40000, "no fields to update");
         }
         return toDto(knowledgePointRepository.save(entity));
     }
@@ -138,7 +170,14 @@ public class KnowledgePointService {
     @Transactional
     public void deletePoint(String id) {
         KnowledgePointEntity entity = findPoint(id);
+        boolean hasChildren = knowledgePointRepository.findByKbIdOrderBySortOrderAscTitleAsc(entity.getKbId())
+            .stream()
+            .anyMatch(point -> id.equals(point.getParentId()));
+        if (hasChildren) {
+            throw new BusinessException(40009, "knowledge point has children and cannot be deleted");
+        }
         knowledgePointAnchorRepository.deleteByKnowledgePointId(id);
+        knowledgePointAliasRepository.deleteByKnowledgePointId(id);
         knowledgePointRepository.delete(entity);
     }
 
@@ -147,6 +186,7 @@ public class KnowledgePointService {
         List<KnowledgePointEntity> points = knowledgePointRepository.findByKbIdOrderBySortOrderAscTitleAsc(kbId);
         for (KnowledgePointEntity point : points) {
             knowledgePointAnchorRepository.deleteByKnowledgePointId(point.getId());
+            knowledgePointAliasRepository.deleteByKnowledgePointId(point.getId());
         }
         knowledgePointRepository.deleteByKbId(kbId);
     }
@@ -180,6 +220,42 @@ public class KnowledgePointService {
     }
 
     @Transactional(readOnly = true)
+    public List<KnowledgePointAliasDto> listAliases(String pointId) {
+        findPoint(pointId);
+        return knowledgePointAliasRepository.findByKnowledgePointIdOrderByAliasAsc(pointId)
+            .stream()
+            .map(this::toAliasDto)
+            .toList();
+    }
+
+    @Transactional
+    public KnowledgePointAliasDto addAlias(String pointId, CreateKnowledgePointAliasRequest request) {
+        findPoint(pointId);
+        String alias = request.alias().trim();
+        if (alias.isBlank()) {
+            throw new BusinessException(40000, "alias is required");
+        }
+        boolean exists = knowledgePointAliasRepository.findByKnowledgePointIdOrderByAliasAsc(pointId)
+            .stream()
+            .anyMatch(item -> alias.equalsIgnoreCase(item.getAlias()));
+        if (exists) {
+            throw new BusinessException(40009, "alias already exists for this knowledge point");
+        }
+        KnowledgePointAliasEntity entity = new KnowledgePointAliasEntity();
+        entity.setId(RelationTypeService.newId("kpal"));
+        entity.setKnowledgePointId(pointId);
+        entity.setAlias(alias);
+        return toAliasDto(knowledgePointAliasRepository.save(entity));
+    }
+
+    @Transactional
+    public void deleteAlias(String aliasId) {
+        KnowledgePointAliasEntity entity = knowledgePointAliasRepository.findById(aliasId)
+            .orElseThrow(() -> new BusinessException(40001, "knowledge point alias not found"));
+        knowledgePointAliasRepository.delete(entity);
+    }
+
+    @Transactional(readOnly = true)
     public List<KnowledgePointDto> findPointsByLocator(String kbId, String locator) {
         ensureKbExists(kbId);
         if (locator == null || locator.isBlank()) {
@@ -192,7 +268,7 @@ public class KnowledgePointService {
             .filter(Objects::nonNull)
             .filter(point -> kbId.equals(point.getKbId()))
             .distinct()
-            .map(this::toDto)
+            .map(point -> toDto(point, listAliasStrings(point.getId())))
             .toList();
     }
 
@@ -285,6 +361,90 @@ public class KnowledgePointService {
         }
     }
 
+    private void validateNotMoveToSelfOrDescendant(KnowledgePointEntity entity, String targetParentId) {
+        if (targetParentId == null) {
+            return;
+        }
+        if (entity.getId().equals(targetParentId)) {
+            throw new BusinessException(40009, "knowledge point cannot be moved under itself");
+        }
+
+        List<KnowledgePointEntity> allPoints = knowledgePointRepository.findByKbIdOrderBySortOrderAscTitleAsc(entity.getKbId());
+        Map<String, List<KnowledgePointEntity>> childrenMap = new HashMap<>();
+        for (KnowledgePointEntity point : allPoints) {
+            if (point.getParentId() != null) {
+                childrenMap.computeIfAbsent(point.getParentId(), key -> new ArrayList<>()).add(point);
+            }
+        }
+
+        ArrayDeque<String> stack = new ArrayDeque<>();
+        stack.push(entity.getId());
+        while (!stack.isEmpty()) {
+            String current = stack.pop();
+            for (KnowledgePointEntity child : childrenMap.getOrDefault(current, List.of())) {
+                if (child.getId().equals(targetParentId)) {
+                    throw new BusinessException(40009, "knowledge point cannot be moved under its descendant");
+                }
+                stack.push(child.getId());
+            }
+        }
+    }
+
+    private int normalizeSortOrder(Integer order) {
+        if (order == null || order < 0) {
+            return 0;
+        }
+        return order;
+    }
+
+    private int reorderAndResolveSortOrder(
+        KnowledgePointEntity entity,
+        String sourceParentId,
+        String targetParentId,
+        Integer requestedOrder
+    ) {
+        List<KnowledgePointEntity> siblings = knowledgePointRepository.findByKbIdOrderBySortOrderAscTitleAsc(entity.getKbId())
+            .stream()
+            .filter(point -> !point.getId().equals(entity.getId()))
+            .filter(point -> Objects.equals(point.getParentId(), targetParentId))
+            .sorted(Comparator.comparing(KnowledgePointEntity::getSortOrder).thenComparing(KnowledgePointEntity::getTitle))
+            .toList();
+
+        List<KnowledgePointEntity> reordered = new ArrayList<>(siblings);
+        int targetIndex = Math.min(normalizeSortOrder(requestedOrder), reordered.size());
+        reordered.add(targetIndex, entity);
+
+        for (int i = 0; i < reordered.size(); i++) {
+            KnowledgePointEntity sibling = reordered.get(i);
+            sibling.setSortOrder(i);
+            if (!sibling.getId().equals(entity.getId())) {
+                knowledgePointRepository.save(sibling);
+            }
+        }
+
+        if (!Objects.equals(sourceParentId, targetParentId)) {
+            normalizeSiblingSortOrders(entity.getKbId(), sourceParentId);
+        }
+
+        return targetIndex;
+    }
+
+    private void normalizeSiblingSortOrders(String kbId, String parentId) {
+        List<KnowledgePointEntity> siblings = knowledgePointRepository.findByKbIdOrderBySortOrderAscTitleAsc(kbId)
+            .stream()
+            .filter(point -> Objects.equals(point.getParentId(), parentId))
+            .sorted(Comparator.comparing(KnowledgePointEntity::getSortOrder).thenComparing(KnowledgePointEntity::getTitle))
+            .toList();
+
+        for (int i = 0; i < siblings.size(); i++) {
+            KnowledgePointEntity sibling = siblings.get(i);
+            if (!Objects.equals(sibling.getSortOrder(), i)) {
+                sibling.setSortOrder(i);
+                knowledgePointRepository.save(sibling);
+            }
+        }
+    }
+
     private int nextSortOrder(String kbId, String parentId) {
         return knowledgePointRepository.findByKbIdOrderBySortOrderAscTitleAsc(kbId)
             .stream()
@@ -294,11 +454,11 @@ public class KnowledgePointService {
             .orElse(-1) + 1;
     }
 
-    private List<KnowledgePointDto> buildTree(List<KnowledgePointEntity> points) {
+    private List<KnowledgePointDto> buildTree(List<KnowledgePointEntity> points, Map<String, List<String>> aliasesByPointId) {
         Map<String, KnowledgePointDto> dtoMap = new HashMap<>();
         List<KnowledgePointDto> roots = new ArrayList<>();
         for (KnowledgePointEntity point : points) {
-            dtoMap.put(point.getId(), toDto(point));
+            dtoMap.put(point.getId(), toDto(point, aliasesByPointId.getOrDefault(point.getId(), List.of())));
         }
         for (KnowledgePointEntity point : points) {
             KnowledgePointDto current = dtoMap.get(point.getId());
@@ -325,6 +485,10 @@ public class KnowledgePointService {
     }
 
     private KnowledgePointDto toDto(KnowledgePointEntity entity) {
+        return toDto(entity, listAliasStrings(entity.getId()));
+    }
+
+    private KnowledgePointDto toDto(KnowledgePointEntity entity, List<String> aliases) {
         KnowledgePointDto dto = new KnowledgePointDto();
         dto.setId(entity.getId());
         dto.setKbId(entity.getKbId());
@@ -334,7 +498,28 @@ public class KnowledgePointService {
         dto.setStatus(entity.getStatus());
         dto.setEstimatedHours(entity.getEstimatedHours() == null ? null : entity.getEstimatedHours().doubleValue());
         dto.setSortOrder(entity.getSortOrder() == null ? 0 : entity.getSortOrder());
+        dto.setAliases(aliases);
         return dto;
+    }
+
+    private KnowledgePointAliasDto toAliasDto(KnowledgePointAliasEntity entity) {
+        return new KnowledgePointAliasDto(entity.getId(), entity.getKnowledgePointId(), entity.getAlias());
+    }
+
+    private List<String> listAliasStrings(String pointId) {
+        return knowledgePointAliasRepository.findByKnowledgePointIdOrderByAliasAsc(pointId)
+            .stream()
+            .map(KnowledgePointAliasEntity::getAlias)
+            .toList();
+    }
+
+    private Map<String, List<String>> loadAliasesByKb(String kbId) {
+        return knowledgePointAliasRepository.findByKbId(kbId)
+            .stream()
+            .collect(Collectors.groupingBy(
+                KnowledgePointAliasEntity::getKnowledgePointId,
+                Collectors.mapping(KnowledgePointAliasEntity::getAlias, Collectors.toList())
+            ));
     }
 
     private KnowledgePointAnchorDto toAnchorDto(KnowledgePointAnchorEntity entity) {
@@ -356,7 +541,8 @@ public class KnowledgePointService {
         String haystack = String.join(" ",
             safe(dto.getTitle()),
             safe(dto.getSummary()),
-            safe(dto.getStatus())
+            safe(dto.getStatus()),
+            String.join(" ", dto.getAliases() == null ? List.<String>of() : dto.getAliases())
         ).toLowerCase(Locale.ROOT);
         return haystack.contains(query);
     }

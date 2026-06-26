@@ -2,11 +2,16 @@ package com.tu.backend.knowledgerelation.controller;
 
 import com.tu.backend.common.ApiResponse;
 import com.tu.backend.common.PageResponse;
+import com.tu.backend.knowledgerelation.dto.CreateKnowledgePointAliasRequest;
 import com.tu.backend.knowledgerelation.dto.CreateKnowledgePointAnchorRequest;
 import com.tu.backend.knowledgerelation.dto.CreateKnowledgePointRequest;
+import com.tu.backend.knowledgerelation.dto.GenerateKnowledgePointsRequest;
+import com.tu.backend.knowledgerelation.dto.KnowledgePointAliasDto;
 import com.tu.backend.knowledgerelation.dto.KnowledgePointAnchorDto;
 import com.tu.backend.knowledgerelation.dto.KnowledgePointDto;
+import com.tu.backend.knowledgerelation.dto.KnowledgePointGenerationResultDto;
 import com.tu.backend.knowledgerelation.dto.UpdateKnowledgePointRequest;
+import com.tu.backend.knowledgerelation.service.KnowledgePointGenerationService;
 import com.tu.backend.knowledgerelation.service.KnowledgePointService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -26,9 +31,14 @@ import java.util.List;
 public class KnowledgePointController {
 
     private final KnowledgePointService knowledgePointService;
+    private final KnowledgePointGenerationService knowledgePointGenerationService;
 
-    public KnowledgePointController(KnowledgePointService knowledgePointService) {
+    public KnowledgePointController(
+        KnowledgePointService knowledgePointService,
+        KnowledgePointGenerationService knowledgePointGenerationService
+    ) {
         this.knowledgePointService = knowledgePointService;
+        this.knowledgePointGenerationService = knowledgePointGenerationService;
     }
 
     @GetMapping("/kbs/{kbId}/knowledge-points/tree")
@@ -52,6 +62,14 @@ public class KnowledgePointController {
         @RequestParam String locator
     ) {
         return ApiResponse.success(knowledgePointService.findPointsByLocator(kbId, locator));
+    }
+
+    @PostMapping("/kbs/{kbId}/knowledge-points/generate")
+    public ApiResponse<KnowledgePointGenerationResultDto> generatePoints(
+        @PathVariable String kbId,
+        @Valid @RequestBody GenerateKnowledgePointsRequest request
+    ) {
+        return ApiResponse.success(knowledgePointGenerationService.generate(kbId, request));
     }
 
     @GetMapping("/knowledge-points/{id}")
@@ -97,6 +115,25 @@ public class KnowledgePointController {
     @DeleteMapping("/knowledge-point-anchors/{anchorId}")
     public ApiResponse<Void> deleteAnchor(@PathVariable String anchorId) {
         knowledgePointService.deleteAnchor(anchorId);
+        return ApiResponse.success();
+    }
+
+    @GetMapping("/knowledge-points/{id}/aliases")
+    public ApiResponse<List<KnowledgePointAliasDto>> listAliases(@PathVariable String id) {
+        return ApiResponse.success(knowledgePointService.listAliases(id));
+    }
+
+    @PostMapping("/knowledge-points/{id}/aliases")
+    public ApiResponse<KnowledgePointAliasDto> addAlias(
+        @PathVariable String id,
+        @Valid @RequestBody CreateKnowledgePointAliasRequest request
+    ) {
+        return ApiResponse.success(knowledgePointService.addAlias(id, request));
+    }
+
+    @DeleteMapping("/knowledge-point-aliases/{aliasId}")
+    public ApiResponse<Void> deleteAlias(@PathVariable String aliasId) {
+        knowledgePointService.deleteAlias(aliasId);
         return ApiResponse.success();
     }
 }

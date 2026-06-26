@@ -141,17 +141,22 @@ public class KnowledgeRelationService {
 
         String fromPointId = normalize(request.fromPointId());
         String toPointId = normalize(request.toPointId());
-        if (fromPointId.isBlank() || toPointId.isBlank()) {
-            throw new BusinessException(40000, "fromPointId and toPointId are required");
+        if (toPointId.isBlank()) {
+            throw new BusinessException(40000, "toPointId is required");
         }
-        knowledgePointService.findPointEntity(fromPointId);
+        if (fromPointId.isBlank() && request.from() == null) {
+            throw new BusinessException(40000, "fromPointId or from anchor is required");
+        }
+        if (!fromPointId.isBlank()) {
+            knowledgePointService.findPointEntity(fromPointId);
+        }
         knowledgePointService.findPointEntity(toPointId);
 
         KnowledgeRelationEntity entity = new KnowledgeRelationEntity();
         entity.setId(RelationTypeService.newId("kr"));
         entity.setKbId(kbId);
         entity.setRelationTypeKey(typeDef.typeKey());
-        entity.setFromPointId(fromPointId);
+        entity.setFromPointId(fromPointId.isBlank() ? null : fromPointId);
         entity.setToPointId(toPointId);
         if (request.from() != null) {
             applyAnchor(entity, true, request.from());
@@ -287,10 +292,14 @@ public class KnowledgeRelationService {
     }
 
     private KnowledgeRelationDto toDto(KnowledgeRelationEntity entity, RelationTypeDefDto typeDef) {
-        Map<String, String> titles = knowledgePointService.loadTitles(
-            entity.getKbId(),
-            List.of(entity.getFromPointId(), entity.getToPointId())
-        );
+        List<String> pointIds = new ArrayList<>(2);
+        if (entity.getFromPointId() != null && !entity.getFromPointId().isBlank()) {
+            pointIds.add(entity.getFromPointId());
+        }
+        if (entity.getToPointId() != null && !entity.getToPointId().isBlank()) {
+            pointIds.add(entity.getToPointId());
+        }
+        Map<String, String> titles = knowledgePointService.loadTitles(entity.getKbId(), pointIds);
         KnowledgeAnchorDto fromAnchor = anchorDtoFromEntity(entity, true);
         KnowledgeAnchorDto toAnchor = anchorDtoFromEntity(entity, false);
         return new KnowledgeRelationDto(

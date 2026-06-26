@@ -86,6 +86,7 @@ public class KnowledgeRelationSchemaInitializer implements ApplicationRunner {
             )
             """);
         ensureKnowledgePointTables("mysql");
+        ensureKnowledgePointAliasTables("mysql");
         migrateKnowledgeRelationPointColumns("mysql");
         log.info("ensured knowledge relation tables for mysql");
     }
@@ -191,6 +192,50 @@ public class KnowledgeRelationSchemaInitializer implements ApplicationRunner {
         }
     }
 
+    private void ensureKnowledgePointAliasTables(String database) {
+        if ("mysql".equals(database)) {
+            jdbcTemplate.execute("""
+                create table if not exists knowledge_point_alias (
+                  id varchar(64) not null primary key,
+                  knowledge_point_id varchar(64) not null,
+                  alias varchar(255) not null,
+                  created_at datetime(6) not null,
+                  updated_at datetime(6) not null,
+                  constraint uk_kpa_point_alias unique (knowledge_point_id, alias),
+                  index idx_kpa_alias_point (knowledge_point_id)
+                )
+                """);
+            return;
+        }
+        if ("postgresql".equals(database)) {
+            jdbcTemplate.execute("""
+                create table if not exists knowledge_point_alias (
+                  id varchar(64) not null primary key,
+                  knowledge_point_id varchar(64) not null,
+                  alias varchar(255) not null,
+                  created_at timestamp(6) not null,
+                  updated_at timestamp(6) not null,
+                  constraint uk_kpa_point_alias unique (knowledge_point_id, alias)
+                )
+                """);
+            jdbcTemplate.execute("create index if not exists idx_kpa_alias_point on knowledge_point_alias (knowledge_point_id)");
+            return;
+        }
+        if ("h2".equals(database)) {
+            jdbcTemplate.execute("""
+                create table if not exists knowledge_point_alias (
+                  id varchar(64) not null primary key,
+                  knowledge_point_id varchar(64) not null,
+                  alias varchar(255) not null,
+                  created_at timestamp not null,
+                  updated_at timestamp not null,
+                  constraint uk_kpa_point_alias unique (knowledge_point_id, alias)
+                )
+                """);
+            jdbcTemplate.execute("create index if not exists idx_kpa_alias_point on knowledge_point_alias (knowledge_point_id)");
+        }
+    }
+
     private void migrateKnowledgeRelationPointColumns(String database) {
         if (!tableExists("knowledge_relation")) {
             return;
@@ -278,6 +323,7 @@ public class KnowledgeRelationSchemaInitializer implements ApplicationRunner {
         jdbcTemplate.execute("create index if not exists idx_kr_kb_to on knowledge_relation (kb_id, to_locator)");
         jdbcTemplate.execute("create index if not exists idx_kr_kb_type on knowledge_relation (kb_id, relation_type_key)");
         ensureKnowledgePointTables("postgresql");
+        ensureKnowledgePointAliasTables("postgresql");
         migrateKnowledgeRelationPointColumns("postgresql");
         log.info("ensured knowledge relation tables for postgresql");
     }
@@ -323,6 +369,7 @@ public class KnowledgeRelationSchemaInitializer implements ApplicationRunner {
         jdbcTemplate.execute("create index if not exists idx_kr_kb_to on knowledge_relation (kb_id, to_locator)");
         jdbcTemplate.execute("create index if not exists idx_kr_kb_type on knowledge_relation (kb_id, relation_type_key)");
         ensureKnowledgePointTables("h2");
+        ensureKnowledgePointAliasTables("h2");
         migrateKnowledgeRelationPointColumns("h2");
         log.info("ensured knowledge relation tables for h2");
     }

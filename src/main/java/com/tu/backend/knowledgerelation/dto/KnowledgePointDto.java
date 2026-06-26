@@ -13,6 +13,7 @@ public class KnowledgePointDto {
     private String status;
     private Double estimatedHours;
     private int sortOrder;
+    private List<String> aliases = new ArrayList<>();
     private List<KnowledgePointDto> children = new ArrayList<>();
 
     public String getId() {
@@ -77,6 +78,14 @@ public class KnowledgePointDto {
 
     public void setSortOrder(int sortOrder) {
         this.sortOrder = sortOrder;
+    }
+
+    public List<String> getAliases() {
+        return aliases;
+    }
+
+    public void setAliases(List<String> aliases) {
+        this.aliases = aliases == null ? new ArrayList<>() : aliases;
     }
 
     public List<KnowledgePointDto> getChildren() {
