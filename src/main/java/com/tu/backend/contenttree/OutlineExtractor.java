@@ -111,6 +111,9 @@ public final class OutlineExtractor {
                 continue;
             }
             String title = blockPreviewLabel(block);
+            if (title == null || title.isBlank()) {
+                title = "文档内容";
+            }
             result.add(new ExtractedOutlineNode(
                 stableNodeId(pageId, blockId, 2, title),
                 null,
@@ -157,6 +160,12 @@ public final class OutlineExtractor {
                     String key = heading.blockId() + ":" + heading.level() + ":" + heading.text();
                     if (seen.add(key)) {
                         result.add(new MarkdownHeading(heading.text(), heading.level() + offset, heading.blockId()));
+                    }
+                }
+                for (TiptapDocumentWalker.TiptapEmbedOutline embed : TiptapDocumentWalker.extractEmbedOutlines(document, blockId)) {
+                    String key = embed.blockId() + ":embed:" + embed.title();
+                    if (seen.add(key)) {
+                        result.add(new MarkdownHeading(embed.title(), 2 + offset, embed.blockId()));
                     }
                 }
             } else {
@@ -299,6 +308,13 @@ public final class OutlineExtractor {
             if (TiptapDocumentWalker.isDocument(document)) {
                 String plain = TiptapDocumentWalker.extractPlainText(document);
                 if (plain.isBlank()) {
+                    String embedSummary = TiptapDocumentWalker.summarizeDocumentEmbeds(document);
+                    if (!embedSummary.isBlank()) {
+                        if (embedSummary.length() <= PREVIEW_MAX) {
+                            return embedSummary;
+                        }
+                        return embedSummary.substring(0, PREVIEW_MAX) + "…";
+                    }
                     return null;
                 }
                 if (plain.length() <= PREVIEW_MAX) {
@@ -355,7 +371,13 @@ public final class OutlineExtractor {
             if (TiptapDocumentWalker.isDocument(document)) {
                 String plain = TiptapDocumentWalker.extractPlainText(document);
                 if (plain.isBlank()) {
-                    return null;
+                    String embedSummary = TiptapDocumentWalker.summarizeDocumentEmbeds(document);
+                    if (!embedSummary.isBlank()) {
+                        return embedSummary.length() <= PREVIEW_MAX
+                            ? embedSummary
+                            : embedSummary.substring(0, PREVIEW_MAX) + "…";
+                    }
+                    return "文档内容";
                 }
                 if (plain.length() <= PREVIEW_MAX) {
                     return plain;

@@ -24,6 +24,9 @@ public final class TiptapDocumentWalker {
     public record TiptapHeading(String text, int level, String blockId) {
     }
 
+    public record TiptapEmbedOutline(String title, String blockId) {
+    }
+
     public static boolean isDocument(JsonNode node) {
         return node != null && node.isObject() && "doc".equals(text(node, "type"));
     }
@@ -44,6 +47,48 @@ public final class TiptapDocumentWalker {
         }
         collectHeadings(document.get("content"), headings, defaultBlockId, 0);
         return headings;
+    }
+
+    public static List<TiptapEmbedOutline> extractEmbedOutlines(JsonNode document, String defaultBlockId) {
+        List<TiptapEmbedOutline> outlines = new ArrayList<>();
+        if (!isDocument(document)) {
+            return outlines;
+        }
+        collectEmbedOutlines(document.get("content"), outlines, defaultBlockId);
+        return outlines;
+    }
+
+    public static String summarizeDocumentEmbeds(JsonNode document) {
+        List<TiptapEmbedOutline> embeds = extractEmbedOutlines(document, "");
+        if (embeds.isEmpty()) {
+            return "";
+        }
+        if (embeds.size() == 1) {
+            return embeds.get(0).title();
+        }
+        return embeds.get(0).title() + " 等 " + embeds.size() + " 项";
+    }
+
+    public static String pdfExcerptBlockLabel(JsonNode attrs) {
+        String fileName = text(attrs, "fileName");
+        int start = attrs.path("startPage").asInt(1);
+        int end = attrs.path("endPage").asInt(start);
+        String name = fileName.isBlank() ? "PDF" : fileName;
+        if (start == end) {
+            return name + " · 第" + start + "页";
+        }
+        return name + " · 第" + start + "–" + end + "页";
+    }
+
+    public static String urlEmbedBlockLabel(JsonNode attrs) {
+        String url = text(attrs, "url");
+        if (url.isBlank()) {
+            return "嵌入链接";
+        }
+        if (url.length() > 60) {
+            return url.substring(0, 57) + "…";
+        }
+        return url;
     }
 
     public static void collectReferences(
@@ -193,6 +238,43 @@ public final class TiptapDocumentWalker {
         }
     }
 
+    private static void collectEmbedOutlines(
+        JsonNode nodes,
+        List<TiptapEmbedOutline> outlines,
+        String defaultBlockId
+    ) {
+        if (!(nodes instanceof ArrayNode array)) {
+            return;
+        }
+        for (JsonNode node : array) {
+            if (!node.isObject()) {
+                continue;
+            }
+            String type = text(node, "type");
+            JsonNode attrs = node.path("attrs");
+            String blockId = firstNonBlank(text(attrs, "blockId"), defaultBlockId);
+            String label = embedBlockLabel(type, attrs);
+            if (label != null && !label.isBlank() && !blockId.isBlank()) {
+                outlines.add(new TiptapEmbedOutline(label, blockId));
+            }
+            collectEmbedOutlines(node.get("content"), outlines, defaultBlockId);
+        }
+    }
+
+    private static String embedBlockLabel(String type, JsonNode attrs) {
+        return switch (type) {
+            case "pdfExcerptBlock" -> pdfExcerptBlockLabel(attrs);
+            case "urlEmbedBlock" -> urlEmbedBlockLabel(attrs);
+            case "x6Block" -> {
+                String title = text(attrs, "title");
+                yield title.isBlank() ? "画板" : title;
+            }
+            case "timelineBlock" -> "时间轴";
+            case "tableBlock" -> "表格";
+            default -> null;
+        };
+    }
+
     private static void collectHeadings(
         JsonNode nodes,
         List<TiptapHeading> headings,
@@ -256,6 +338,10 @@ public final class TiptapDocumentWalker {
                 if (title != null && !title.isBlank()) {
                     sb.append(title).append('\n');
                 }
+            } else if ("pdfExcerptBlock".equals(type)) {
+                sb.append(pdfExcerptBlockLabel(node.path("attrs"))).append('\n');
+            } else if ("urlEmbedBlock".equals(type)) {
+                sb.append(urlEmbedBlockLabel(node.path("attrs"))).append('\n');
             } else {
                 collectPlainText(node.get("content"), sb, false);
             }

@@ -80,6 +80,7 @@ storage:
   s3-bucket: ${STORAGE_S3_BUCKET:tu-files}
   s3-path-style: ${STORAGE_S3_PATH_STYLE:true}
   max-file-size: ${STORAGE_MAX_FILE_SIZE:20971520}
+  max-pdf-file-size: ${STORAGE_MAX_PDF_FILE_SIZE:209715200}
 
 secret:
   # Development fallback key. Override TU_SECRET_ENCRYPTION_KEY in production.

@@ -13,6 +13,7 @@ public class FileStorageProperties {
     private String s3Bucket = "tu-files";
     private boolean s3PathStyle = true;
     private long maxFileSize = 20L * 1024 * 1024;
+    private long maxPdfFileSize = 200L * 1024 * 1024;
 
     public boolean isEnabled() {
         return enabled;
@@ -76,5 +77,13 @@ public class FileStorageProperties {
 
     public void setMaxFileSize(long maxFileSize) {
         this.maxFileSize = maxFileSize;
+    }
+
+    public long getMaxPdfFileSize() {
+        return maxPdfFileSize;
+    }
+
+    public void setMaxPdfFileSize(long maxPdfFileSize) {
+        this.maxPdfFileSize = maxPdfFileSize;
     }
 }

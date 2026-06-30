@@ -54,4 +54,31 @@ class TiptapDocumentWalkerTest {
         assertThat(headings.get(0).level()).isEqualTo(1);
         assertThat(headings.get(0).blockId()).isEqualTo("h1");
     }
+
+    @Test
+    void extractEmbedOutlinesFromPdfExcerptBlock() throws Exception {
+        String json = """
+            {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "pdfExcerptBlock",
+                  "attrs": {
+                    "blockId": "pdf-1",
+                    "fileId": "f1",
+                    "fileName": "book.pdf",
+                    "startPage": 3,
+                    "endPage": 7
+                  }
+                }
+              ]
+            }
+            """;
+        var document = objectMapper.readTree(json);
+        var embeds = TiptapDocumentWalker.extractEmbedOutlines(document, "page-content");
+        assertThat(embeds).hasSize(1);
+        assertThat(embeds.get(0).title()).isEqualTo("book.pdf · 第3–7页");
+        assertThat(embeds.get(0).blockId()).isEqualTo("pdf-1");
+        assertThat(TiptapDocumentWalker.extractPlainText(document)).contains("book.pdf");
+    }
 }

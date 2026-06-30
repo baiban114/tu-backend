@@ -36,7 +36,8 @@ public class FileStorageService {
         "image/jpg",
         "image/gif",
         "image/webp",
-        "image/svg+xml"
+        "image/svg+xml",
+        "application/pdf"
     );
 
     private final S3Client s3Client;
@@ -66,11 +67,12 @@ public class FileStorageService {
         if (file == null || file.isEmpty()) {
             throw new BusinessException(40000, "file required");
         }
-        if (file.getSize() > properties.getMaxFileSize()) {
+
+        String contentType = normalizeContentType(file.getContentType());
+        if (file.getSize() > resolveMaxFileSize(contentType)) {
             throw new BusinessException(40000, "file too large");
         }
 
-        String contentType = normalizeContentType(file.getContentType());
         if (!ALLOWED_CONTENT_TYPES.contains(contentType)) {
             throw new BusinessException(40000, "unsupported file type");
         }
@@ -109,20 +111,45 @@ public class FileStorageService {
     }
 
     public StoredFile open(String id) {
-        FileAssetEntity entity = fileAssetRepository.findById(id)
-            .orElseThrow(() -> new BusinessException(40001, "file not found"));
+        FileAssetEntity entity = requireEntity(id);
+        return openFromEntity(entity, null);
+    }
 
+    public StoredFile openRange(String id, HttpByteRange range) {
+        FileAssetEntity entity = requireEntity(id);
+        return openFromEntity(entity, range);
+    }
+
+    public long fileSize(String id) {
+        return requireEntity(id).getSizeBytes();
+    }
+
+    private FileAssetEntity requireEntity(String id) {
+        return fileAssetRepository.findById(id)
+            .orElseThrow(() -> new BusinessException(40001, "file not found"));
+    }
+
+    private StoredFile openFromEntity(FileAssetEntity entity, HttpByteRange range) {
         try {
-            InputStream stream = s3Client.getObject(
-                GetObjectRequest.builder()
-                    .bucket(properties.getS3Bucket())
-                    .key(entity.getStorageKey())
-                    .build()
-            );
-            return new StoredFile(stream, entity.getContentType(), entity.getSizeBytes(), entity.getOriginalFilename());
+            var requestBuilder = GetObjectRequest.builder()
+                .bucket(properties.getS3Bucket())
+                .key(entity.getStorageKey());
+            if (range != null) {
+                requestBuilder.range(range.toS3RangeValue());
+            }
+            InputStream stream = s3Client.getObject(requestBuilder.build());
+            long sizeBytes = range == null ? entity.getSizeBytes() : range.length();
+            return new StoredFile(stream, entity.getContentType(), sizeBytes, entity.getOriginalFilename());
         } catch (S3Exception ex) {
             throw new BusinessException(50000, "failed to read file");
         }
+    }
+
+    private long resolveMaxFileSize(String contentType) {
+        if ("application/pdf".equals(contentType)) {
+            return properties.getMaxPdfFileSize();
+        }
+        return properties.getMaxFileSize();
     }
 
     private void ensureBucket() {
@@ -152,6 +179,7 @@ public class FileStorageService {
             case "image/gif" -> ".gif";
             case "image/webp" -> ".webp";
             case "image/svg+xml" -> ".svg";
+            case "application/pdf" -> ".pdf";
             default -> "";
         };
     }
