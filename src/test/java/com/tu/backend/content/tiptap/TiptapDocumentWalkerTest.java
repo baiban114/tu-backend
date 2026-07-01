@@ -81,4 +81,17 @@ class TiptapDocumentWalkerTest {
         assertThat(embeds.get(0).blockId()).isEqualTo("pdf-1");
         assertThat(TiptapDocumentWalker.extractPlainText(document)).contains("book.pdf");
     }
+
+    @Test
+    void pdfExcerptBlockLabelSupportsFullMode() throws Exception {
+        var attrs = objectMapper.readTree("""
+            {
+              "fileName": "book.pdf",
+              "viewMode": "full",
+              "startPage": 1,
+              "endPage": 120
+            }
+            """);
+        assertThat(TiptapDocumentWalker.pdfExcerptBlockLabel(attrs)).isEqualTo("book.pdf · 全文");
+    }
 }

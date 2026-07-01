@@ -71,9 +71,13 @@ public final class TiptapDocumentWalker {
 
     public static String pdfExcerptBlockLabel(JsonNode attrs) {
         String fileName = text(attrs, "fileName");
+        String viewMode = text(attrs, "viewMode");
         int start = attrs.path("startPage").asInt(1);
         int end = attrs.path("endPage").asInt(start);
         String name = fileName.isBlank() ? "PDF" : fileName;
+        if ("full".equals(viewMode)) {
+            return name + " · 全文";
+        }
         if (start == end) {
             return name + " · 第" + start + "页";
         }
